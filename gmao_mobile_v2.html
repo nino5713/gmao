@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GMAO">
+<link rel="manifest" href="/manifest.json">
+<title>SOCOM GMAO Mobile</title>
+<style>
+:root {
+  --bg:      #1f2b35;
+  --bg2:     #2d3f52;
+  --bg3:     #243344;
+  --acc:     #2563eb;
+  --acc2:    #1d4ed8;
+  --acc3:    #3b82f6;
+  --light:   #f4f6f8;
+  --white:   #ffffff;
+  --text:    #1f2b35;
+  --muted:   #64748b;
+  --border:  #e2e8f0;
+  --red:     #dc2626;
+  --orange:  #f59e0b;
+  --green:   #16a34a;
+  --radius:  14px;
+  --radius-sm: 8px;
+  --shadow:  0 2px 16px rgba(0,0,0,.10);
+  --nav-h:   64px;
+  --header-h:56px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--light);color:var(--text);display:flex;flex-direction:column}
+
+/* ── Login ── */
+#login-screen{display:flex;align-items:center;justify-content:center;flex:1;background:var(--bg);padding:24px;min-height:100vh}
+.login-card{background:var(--bg2);border-radius:20px;padding:36px 28px;width:100%;max-width:380px;box-shadow:0 24px 60px rgba(0,0,0,.4)}
+.login-logo{text-align:center;margin-bottom:32px}
+.login-logo .logo-icon{width:64px;height:64px;background:var(--acc);border-radius:16px;display:inline-flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:14px;box-shadow:0 8px 24px rgba(37,99,235,.4)}
+.login-logo h1{color:var(--white);font-size:26px;font-weight:800;letter-spacing:-.5px}
+.login-logo p{color:#8aa0b0;font-size:13px;margin-top:4px}
+.field-group{margin-bottom:18px}
+.field-group label{display:block;color:#c0d0df;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:7px}
+.field-group input{width:100%;background:#1a2530;border:1.5px solid #3d5166;border-radius:10px;padding:13px 15px;color:var(--white);font-size:15px;outline:none;transition:.2s}
+.field-group input:focus{border-color:var(--acc);background:#1e2c3a}
+.btn-primary{width:100%;background:var(--acc);color:var(--white);border:none;border-radius:10px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;transition:.2s;letter-spacing:.2px}
+.btn-primary:active{background:var(--acc2);transform:scale(.98)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.login-error{color:#f87171;font-size:13px;text-align:center;margin-top:12px;min-height:18px;font-weight:500}
+.offline-badge{background:rgba(146,64,14,.3);color:#fcd34d;border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;text-align:center;margin-bottom:18px;display:flex;align-items:center;gap:6px;justify-content:center}
+
+/* ── App shell ── */
+#app{display:none;flex-direction:column;height:100vh;overflow:hidden}
+#app.active{display:flex}
+
+/* Header */
+.app-header{height:var(--header-h);background:var(--bg);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.06)}
+.header-back{color:#8aa0b0;font-size:20px;cursor:pointer;padding:4px 8px 4px 0;border:none;background:none;display:none;align-items:center}
+.header-back.visible{display:flex}
+.app-header h2{color:var(--white);font-size:17px;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.header-actions{display:flex;gap:4px;align-items:center}
+.icon-btn{background:none;border:none;color:#8aa0b0;font-size:20px;cursor:pointer;padding:6px;border-radius:8px;transition:.15s}
+.icon-btn:active{background:rgba(255,255,255,.1)}
+.sync-spinner{display:none;width:18px;height:18px;border:2px solid rgba(255,255,255,.2);border-top-color:var(--acc3);border-radius:50%;animation:spin .7s linear infinite}
+.sync-spinner.active{display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Online indicator */
+.online-dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0;transition:.3s}
+.online-dot.offline{background:var(--orange)}
+
+/* Bottom nav */
+.bottom-nav{height:var(--nav-h);background:var(--bg);display:flex;align-items:center;flex-shrink:0;border-top:1px solid rgba(255,255,255,.06);padding-bottom:env(safe-area-inset-bottom,0)}
+.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;padding:8px 4px;border:none;background:none;color:#4a6278;transition:.15s;position:relative}
+.nav-item.active{color:var(--acc3)}
+.nav-item .nav-icon{font-size:22px;line-height:1}
+.nav-item .nav-label{font-size:10px;font-weight:600;letter-spacing:.2px}
+.nav-badge{position:absolute;top:6px;right:calc(50% - 18px);background:var(--red);color:#fff;border-radius:10px;font-size:9px;font-weight:800;padding:1px 5px;min-width:16px;text-align:center}
+
+/* Offline queue badge */
+.queue-badge{position:absolute;top:6px;right:calc(50% - 18px);background:var(--orange);color:#fff;border-radius:10px;font-size:9px;font-weight:800;padding:1px 5px;min-width:16px;text-align:center;display:none}
+
+/* Pages */
+.page-stack{flex:1;overflow:hidden;position:relative}
+.page{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;transition:transform .25s cubic-bezier(.4,0,.2,1),opacity .25s;background:var(--light)}
+.page.hidden{transform:translateX(100%);opacity:0;pointer-events:none}
+.page-content{padding:16px;padding-bottom:calc(16px + env(safe-area-inset-bottom,0))}
+
+/* Dashboard KPI */
+.kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.kpi-card{background:var(--white);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);cursor:pointer;transition:.15s;position:relative;overflow:hidden}
+.kpi-card::before{content:'';position:absolute;inset:0;background:var(--acc);opacity:0;transition:.15s}
+.kpi-card:active::before{opacity:.05}
+.kpi-card:active{transform:scale(.97)}
+.kpi-icon{font-size:24px;margin-bottom:8px}
+.kpi-value{font-size:28px;font-weight:800;color:var(--text);line-height:1}
+.kpi-label{font-size:11px;color:var(--muted);font-weight:600;margin-top:4px;line-height:1.3}
+.kpi-card.accent{background:var(--acc)}
+.kpi-card.accent .kpi-value,.kpi-card.accent .kpi-label{color:#fff}
+.kpi-card.green{background:#16a34a}
+.kpi-card.green .kpi-value,.kpi-card.green .kpi-label{color:#fff}
+.kpi-card.orange{background:#f59e0b}
+.kpi-card.orange .kpi-value,.kpi-card.orange .kpi-label{color:#fff}
+.kpi-card.red{background:#dc2626}
+.kpi-card.red .kpi-value,.kpi-card.red .kpi-label{color:#fff}
+
+/* Section headers */
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;margin-top:4px}
+.section-title{font-size:17px;font-weight:800;color:var(--text)}
+.btn-add{background:var(--acc);color:var(--white);border:none;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;transition:.15s}
+.btn-add:active{background:var(--acc2);transform:scale(.97)}
+
+/* Cards */
+.card{background:var(--white);border-radius:var(--radius);padding:15px;margin-bottom:10px;box-shadow:var(--shadow);cursor:pointer;transition:.15s;position:relative;overflow:hidden}
+.card::after{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:transparent;border-radius:3px 0 0 3px;transition:.15s}
+.card.urgent::after{background:var(--red)}
+.card.haute::after{background:var(--orange)}
+.card.normale::after{background:var(--green)}
+.card:active{transform:scale(.98);opacity:.9}
+.card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px}
+.card-title{font-weight:700;font-size:14px;color:var(--text);line-height:1.3;flex:1}
+.card-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.card-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.card-offline{position:absolute;top:10px;right:10px;background:var(--orange);color:#fff;border-radius:6px;font-size:9px;font-weight:800;padding:2px 6px}
+
+/* Badges */
+.badge{padding:3px 9px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;letter-spacing:.2px}
+.badge-urgent{background:#fee2e2;color:#991b1b}
+.badge-haute{background:#fef3c7;color:#92400e}
+.badge-normale{background:#dcfce7;color:#166534}
+.badge-ouvert{background:#dbeafe;color:#1e40af}
+.badge-encours{background:#fef3c7;color:#92400e}
+.badge-termine{background:#dcfce7;color:#166534}
+.badge-planifie{background:#dbeafe;color:#1e40af}
+.badge-realise{background:#dcfce7;color:#166534}
+.badge-depannage{background:#ede9fe;color:#5b21b6}
+.badge-maintenance{background:#e0f2fe;color:#0369a1}
+
+/* Filters */
+.filter-row{display:flex;gap:8px;margin-bottom:14px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.filter-row::-webkit-scrollbar{display:none}
+.filter-chip{padding:7px 15px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;border:1.5px solid var(--border);background:var(--white);color:var(--muted);transition:.15s;flex-shrink:0}
+.filter-chip.active{background:var(--acc);color:var(--white);border-color:var(--acc)}
+
+/* Search */
+.search-wrap{position:relative;margin-bottom:14px}
+.search-wrap input{width:100%;background:var(--white);border:1.5px solid var(--border);border-radius:12px;padding:10px 14px 10px 40px;font-size:14px;color:var(--text);outline:none;transition:.2s}
+.search-wrap input:focus{border-color:var(--acc)}
+.search-wrap .search-icon{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:16px;pointer-events:none}
+.search-wrap .search-clear{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:16px;cursor:pointer;display:none}
+
+/* Empty state */
+.empty-state{text-align:center;padding:48px 24px;color:var(--muted)}
+.empty-state .empty-icon{font-size:48px;margin-bottom:12px;display:block;opacity:.4}
+.empty-state p{font-size:15px;font-weight:600}
+.empty-state small{font-size:13px;display:block;margin-top:4px;opacity:.7}
+
+/* Loading */
+.loading{display:flex;align-items:center;justify-content:center;padding:32px;gap:10px;color:var(--muted)}
+.loading .spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--acc);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+
+/* Detail sheet */
+.detail-row{display:flex;justify-content:space-between;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--border)}
+.detail-row:last-child{border-bottom:none}
+.detail-label{font-size:12px;color:var(--muted);font-weight:600;flex-shrink:0;padding-right:12px;max-width:130px}
+.detail-value{font-size:13px;font-weight:600;color:var(--text);text-align:right;word-break:break-word}
+.detail-card{background:var(--white);border-radius:var(--radius);padding:6px 16px;box-shadow:var(--shadow);margin-bottom:12px}
+.detail-section-title{font-size:12px;font-weight:800;color:var(--acc);letter-spacing:.5px;text-transform:uppercase;margin:18px 0 8px}
+
+/* Action buttons */
+.action-bar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.btn{padding:10px 18px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:.15s;display:flex;align-items:center;gap:6px}
+.btn:active{transform:scale(.97)}
+.btn-success{background:#16a34a;color:#fff}
+.btn-warning{background:var(--orange);color:#fff}
+.btn-danger{background:var(--red);color:#fff}
+.btn-secondary{background:var(--border);color:var(--text)}
+.btn-outline{background:transparent;color:var(--acc);border:1.5px solid var(--acc)}
+
+/* Form */
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.3px;text-transform:uppercase;margin-bottom:6px}
+.form-group input,.form-group select,.form-group textarea{width:100%;background:var(--white);border:1.5px solid var(--border);border-radius:10px;padding:11px 14px;font-size:14px;color:var(--text);outline:none;transition:.2s;font-family:inherit}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--acc)}
+.form-group textarea{min-height:90px;resize:vertical}
+.form-title{font-size:18px;font-weight:800;color:var(--text);margin-bottom:20px}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none;align-items:flex-end;justify-content:center;padding:0}
+.modal-overlay.active{display:flex}
+.modal{background:var(--white);border-radius:20px 20px 0 0;padding:24px;width:100%;max-height:90vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.modal-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px}
+.modal-title{font-size:18px;font-weight:800;color:var(--text);margin-bottom:20px}
+.modal-actions{display:flex;gap:10px;margin-top:20px}
+.modal-actions .btn{flex:1;justify-content:center}
+
+/* Toast */
+.toast{position:fixed;bottom:calc(var(--nav-h) + 12px);left:50%;transform:translateX(-50%) translateY(20px);background:#1f2b35;color:#fff;border-radius:12px;padding:10px 18px;font-size:13px;font-weight:600;z-index:300;opacity:0;transition:all .3s;pointer-events:none;white-space:nowrap;max-width:90vw;text-align:center}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.success{background:#16a34a}
+.toast.error{background:var(--red)}
+.toast.warning{background:var(--orange)}
+
+/* Offline banner */
+.offline-banner{background:rgba(245,158,11,.15);border-bottom:1px solid rgba(245,158,11,.3);padding:6px 16px;display:none;align-items:center;gap:8px;font-size:12px;color:#92400e;font-weight:600}
+.offline-banner.visible{display:flex}
+.offline-banner span{flex:1}
+
+/* Sync queue counter */
+.sync-queue-bar{background:rgba(37,99,235,.1);border-bottom:1px solid rgba(37,99,235,.2);padding:6px 16px;display:none;align-items:center;gap:8px;font-size:12px;color:#1e40af;font-weight:600;cursor:pointer}
+.sync-queue-bar.visible{display:flex}
+
+/* Planning calendar */
+.cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.cal-month{font-size:16px;font-weight:800;color:var(--text)}
+.cal-nav{background:var(--border);border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:16px;color:var(--text)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:14px}
+.cal-day-header{text-align:center;font-size:10px;font-weight:700;color:var(--muted);padding:4px 0;text-transform:uppercase}
+.cal-day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:13px;cursor:pointer;position:relative;transition:.15s;font-weight:500;color:var(--text)}
+.cal-day:hover{background:var(--border)}
+.cal-day.today{background:var(--acc);color:#fff;font-weight:700}
+.cal-day.has-events::after{content:'';position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:4px;height:4px;background:var(--orange);border-radius:50%}
+.cal-day.today.has-events::after{background:#fff}
+.cal-day.other-month{opacity:.3}
+.cal-day.selected{background:var(--bg);color:#fff}
+
+/* Settings */
+.settings-section{background:var(--white);border-radius:var(--radius);margin-bottom:12px;overflow:hidden;box-shadow:var(--shadow)}
+.settings-item{display:flex;align-items:center;padding:14px 16px;gap:12px;border-bottom:1px solid var(--border);cursor:pointer;transition:.15s}
+.settings-item:last-child{border-bottom:none}
+.settings-item:active{background:var(--light)}
+.settings-icon{font-size:20px;width:32px;text-align:center;flex-shrink:0}
+.settings-label{flex:1;font-size:14px;font-weight:600;color:var(--text)}
+.settings-value{font-size:13px;color:var(--muted)}
+.settings-arrow{color:var(--muted);font-size:16px}
+
+/* Progress bar for syncing */
+.progress-bar{height:3px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:8px}
+.progress-fill{height:100%;background:var(--acc);border-radius:3px;transition:width .3s;width:0%}
+
+/* Skeleton loader */
+.skeleton{background:linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%);background-size:200% 100%;animation:shimmer 1.2s infinite;border-radius:var(--radius-sm)}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.skeleton-card{height:90px;margin-bottom:10px}
+
+/* Scrollbar hide */
+.no-scroll::-webkit-scrollbar{display:none}
+.no-scroll{scrollbar-width:none}
+</style>
+</head>
+<body>
+
+<!-- ════════ LOGIN ════════ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="logo-icon">🔧</div>
+      <h1>SOCOM GMAO</h1>
+      <p>Gestion de Maintenance</p>
+    </div>
+    <div id="offline-badge" class="offline-badge" style="display:none">
+      <span>📡</span><span>Mode hors ligne — connexion locale</span>
+    </div>
+    <div class="field-group">
+      <label>Identifiant</label>
+      <input type="text" id="login-user" autocomplete="username" placeholder="Nom d'utilisateur" autocapitalize="none">
+    </div>
+    <div class="field-group">
+      <label>Mot de passe</label>
+      <input type="password" id="login-pass" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <button class="btn-primary" id="login-btn" onclick="doLogin()">Se connecter</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- ════════ APP ════════ -->
+<div id="app">
+
+  <!-- Offline banner -->
+  <div class="offline-banner" id="offline-banner">
+    <span>📡</span><span>Hors ligne — données en cache</span>
+  </div>
+  <div class="sync-queue-bar" id="sync-queue-bar" onclick="showSyncQueue()">
+    <span>⏳</span><span id="sync-queue-count">0 action(s) en attente de sync</span>
+    <span>↻</span>
+  </div>
+
+  <!-- Header -->
+  <div class="app-header">
+    <button class="header-back" id="header-back" onclick="goBack()">←</button>
+    <h2 id="header-title">Tableau de bord</h2>
+    <div class="header-actions">
+      <div class="sync-spinner" id="sync-spinner"></div>
+      <div class="online-dot" id="online-dot"></div>
+      <button class="icon-btn" onclick="syncNow()" title="Synchroniser">↻</button>
+    </div>
+  </div>
+
+  <!-- Page stack -->
+  <div class="page-stack">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-content">
+        <div class="kpi-grid" id="kpi-grid">
+          <div class="skeleton skeleton-card"></div>
+          <div class="skeleton skeleton-card"></div>
+          <div class="skeleton skeleton-card"></div>
+          <div class="skeleton skeleton-card"></div>
+        </div>
+        <div class="section-header">
+          <span class="section-title">Mes BT récents</span>
+          <button class="btn-add" onclick="navTo('bons_travail')">Voir tout</button>
+        </div>
+        <div id="dash-bts"></div>
+      </div>
+    </div>
+
+    <!-- BONS DE TRAVAIL -->
+    <div class="page hidden" id="page-bons_travail">
+      <div class="page-content">
+        <div class="section-header">
+          <span class="section-title">Bons de travail</span>
+          <button class="btn-add" onclick="openBTForm()">+ Nouveau</button>
+        </div>
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input type="text" placeholder="Rechercher..." id="bt-search" oninput="filterBTs()" autocomplete="off">
+          <span class="search-clear" id="bt-search-clear" onclick="clearSearch('bt')">✕</span>
+        </div>
+        <div class="filter-row">
+          <div class="filter-chip active" onclick="filterBT('',this)">Tous</div>
+          <div class="filter-chip" onclick="filterBT('Ouvert',this)">Ouverts</div>
+          <div class="filter-chip" onclick="filterBT('En cours',this)">En cours</div>
+          <div class="filter-chip" onclick="filterBT('Terminé',this)">Terminés</div>
+          <div class="filter-chip" onclick="filterBTType('Dépannage',this)">Dépannage</div>
+          <div class="filter-chip" onclick="filterBTType('Préventif',this)">Préventif</div>
+        </div>
+        <div id="bts-list"></div>
+      </div>
+    </div>
+
+    <!-- BT DETAIL -->
+    <div class="page hidden" id="page-bt-detail">
+      <div class="page-content" id="bt-detail-content"></div>
+    </div>
+
+    <!-- PLANNING -->
+    <div class="page hidden" id="page-planning">
+      <div class="page-content">
+        <div class="section-title" style="margin-bottom:14px">Planning</div>
+        <div class="cal-header">
+          <button class="cal-nav" onclick="calPrev()">‹</button>
+          <span class="cal-month" id="cal-month-label"></span>
+          <button class="cal-nav" onclick="calNext()">›</button>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+        <div class="section-header" style="margin-top:4px">
+          <span class="section-title" id="planning-day-title">Interventions</span>
+        </div>
+        <div id="planning-list"></div>
+      </div>
+    </div>
+
+    <!-- COMPTES RENDUS -->
+    <div class="page hidden" id="page-comptes_rendus">
+      <div class="page-content">
+        <div class="section-header">
+          <span class="section-title">Comptes rendus</span>
+        </div>
+        <div id="cr-list"></div>
+      </div>
+    </div>
+
+    <!-- PARAMÈTRES -->
+    <div class="page hidden" id="page-settings">
+      <div class="page-content">
+        <div class="section-title" style="margin-bottom:16px">Paramètres</div>
+        <div class="settings-section">
+          <div class="settings-item">
+            <span class="settings-icon">👤</span>
+            <span class="settings-label">Utilisateur</span>
+            <span class="settings-value" id="settings-user">—</span>
+          </div>
+          <div class="settings-item">
+            <span class="settings-icon">🔗</span>
+            <span class="settings-label">Serveur</span>
+            <span class="settings-value" id="settings-server">—</span>
+          </div>
+          <div class="settings-item">
+            <span class="settings-icon">📡</span>
+            <span class="settings-label">État connexion</span>
+            <span class="settings-value" id="settings-conn">—</span>
+          </div>
+          <div class="settings-item" onclick="showSyncQueue()">
+            <span class="settings-icon">⏳</span>
+            <span class="settings-label">File d'attente offline</span>
+            <span class="settings-value" id="settings-queue">0 action(s)</span>
+            <span class="settings-arrow">›</span>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-item" onclick="syncNow()">
+            <span class="settings-icon">↻</span>
+            <span class="settings-label">Synchroniser maintenant</span>
+            <span class="settings-arrow">›</span>
+          </div>
+          <div class="settings-item" onclick="clearCache()">
+            <span class="settings-icon">🗑</span>
+            <span class="settings-label">Vider le cache</span>
+            <span class="settings-arrow">›</span>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-item" onclick="doLogout()">
+            <span class="settings-icon">🚪</span>
+            <span class="settings-label" style="color:var(--red)">Déconnexion</span>
+            <span class="settings-arrow">›</span>
+          </div>
+        </div>
+        <div style="text-align:center;margin-top:24px;color:var(--muted);font-size:12px">
+          SOCOM GMAO Mobile v2.0<br>Mode offline avec IndexedDB
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /page-stack -->
+
+  <!-- Bottom Nav -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" onclick="navTo('dashboard',this)" data-page="dashboard">
+      <span class="nav-icon">🏠</span>
+      <span class="nav-label">Accueil</span>
+    </button>
+    <button class="nav-item" onclick="navTo('bons_travail',this)" data-page="bons_travail">
+      <span class="nav-icon">📋</span>
+      <span class="nav-label">BT</span>
+      <span class="nav-badge" id="bt-badge" style="display:none"></span>
+    </button>
+    <button class="nav-item" onclick="navTo('planning',this)" data-page="planning">
+      <span class="nav-icon">📅</span>
+      <span class="nav-label">Planning</span>
+    </button>
+    <button class="nav-item" onclick="navTo('comptes_rendus',this)" data-page="comptes_rendus">
+      <span class="nav-icon">📝</span>
+      <span class="nav-label">CR</span>
+    </button>
+    <button class="nav-item" onclick="navTo('settings',this)" data-page="settings">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label">Réglages</span>
+      <span class="queue-badge" id="queue-badge"></span>
+    </button>
+  </nav>
+
+</div><!-- /app -->
+
+<!-- ════════ MODALS ════════ -->
+
+<!-- BT Form Modal -->
+<div class="modal-overlay" id="bt-form-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="bt-form-title">Nouveau bon de travail</div>
+    <div class="form-group">
+      <label>Titre *</label>
+      <input type="text" id="bf-titre" placeholder="Description courte">
+    </div>
+    <div class="form-group">
+      <label>Type</label>
+      <select id="bf-type">
+        <option>Dépannage</option>
+        <option>Préventif</option>
+        <option>Amélioration</option>
+        <option>Visite</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Priorité</label>
+      <select id="bf-priorite">
+        <option>Normale</option>
+        <option>Haute</option>
+        <option>Urgente</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Équipement</label>
+      <select id="bf-equipement"><option value="">— Aucun —</option></select>
+    </div>
+    <div class="form-group">
+      <label>Technicien</label>
+      <select id="bf-tech"><option value="">— Moi-même —</option></select>
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <textarea id="bf-description" placeholder="Détails..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('bt-form-modal')">Annuler</button>
+      <button class="btn btn-success" onclick="saveBT()">💾 Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- CR Form Modal -->
+<div class="modal-overlay" id="cr-form-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Nouveau compte rendu</div>
+    <input type="hidden" id="cf-bt-id">
+    <div class="form-group">
+      <label>Date d'intervention</label>
+      <input type="date" id="cf-date">
+    </div>
+    <div class="form-group">
+      <label>Heure début</label>
+      <input type="time" id="cf-hdebut">
+    </div>
+    <div class="form-group">
+      <label>Heure fin</label>
+      <input type="time" id="cf-hfin">
+    </div>
+    <div class="form-group">
+      <label>Remarques</label>
+      <textarea id="cf-remarques" placeholder="Travaux effectués, observations..."></textarea>
+    </div>
+    <div class="form-group">
+      <label>Statut</label>
+      <select id="cf-statut">
+        <option>En cours</option>
+        <option>Terminé</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('cr-form-modal')">Annuler</button>
+      <button class="btn btn-success" onclick="saveCR()">💾 Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+// ════════════════════════════════════════════════════
+//  CONFIGURATION
+// ════════════════════════════════════════════════════
+const API_BASE = window.location.origin;
+const IDB_NAME = 'gmao_offline';
+const IDB_VER  = 3;
+
+// ════════════════════════════════════════════════════
+//  STATE
+// ════════════════════════════════════════════════════
+let state = {
+  user:       null,
+  token:      null,
+  online:     navigator.onLine,
+  currentPage:'dashboard',
+  pageHistory:[],
+  bts:        [],
+  btFilter:   '',
+  btTypeFilter:'',
+  btSearch:   '',
+  planning:   [],
+  crs:        [],
+  equipements:[],
+  techniciens:[],
+  calDate:    new Date(),
+  calSelected:null,
+  offlineQueue:[],
+  idb:        null,
+};
+
+// ════════════════════════════════════════════════════
+//  INDEXEDDB
+// ════════════════════════════════════════════════════
+function initIDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VER);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('cache'))
+        db.createObjectStore('cache', { keyPath: 'key' });
+      if (!db.objectStoreNames.contains('queue'))
+        db.createObjectStore('queue', { keyPath: 'id', autoIncrement: true });
+      if (!db.objectStoreNames.contains('auth'))
+        db.createObjectStore('auth', { keyPath: 'key' });
+    };
+    req.onsuccess  = e => resolve(e.target.result);
+    req.onerror    = e => reject(e.target.error);
+  });
+}
+
+async function idbSet(store, data) {
+  return new Promise((resolve, reject) => {
+    const tx = state.idb.transaction(store, 'readwrite');
+    tx.objectStore(store).put(data).onsuccess = () => resolve();
+    tx.onerror = e => reject(e.target.error);
+  });
+}
+
+async function idbGet(store, key) {
+  return new Promise((resolve, reject) => {
+    const tx = state.idb.transaction(store, 'readonly');
+    const req = tx.objectStore(store).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+async function idbGetAll(store) {
+  return new Promise((resolve, reject) => {
+    const tx  = state.idb.transaction(store, 'readonly');
+    const req = tx.objectStore(store).getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+async function idbDelete(store, key) {
+  return new Promise((resolve, reject) => {
+    const tx = state.idb.transaction(store, 'readwrite');
+    tx.objectStore(store).delete(key).onsuccess = () => resolve();
+    tx.onerror = e => reject(e.target.error);
+  });
+}
+
+// Cache helpers
+async function cacheSet(key, data) {
+  await idbSet('cache', { key, data, ts: Date.now() });
+}
+async function cacheGet(key) {
+  const r = await idbGet('cache', key);
+  return r ? r.data : null;
+}
+
+// Offline queue
+async function queueAdd(item) {
+  await idbSet('queue', { ...item, id: undefined }); // autoIncrement
+  await loadQueue();
+}
+async function loadQueue() {
+  state.offlineQueue = await idbGetAll('queue');
+  updateQueueUI();
+}
+
+// ════════════════════════════════════════════════════
+//  API
+// ════════════════════════════════════════════════════
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
+  const res = await fetch(API_BASE + path, {
+    ...opts,
+    headers: { ...headers, ...(opts.headers || {}) },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function apiCached(path, cacheKey, force = false) {
+  if (!force && !state.online) {
+    const cached = await cacheGet(cacheKey);
+    if (cached) return cached;
+    throw new Error('Hors ligne et aucune donnée en cache');
+  }
+  try {
+    const data = await api(path);
+    await cacheSet(cacheKey, data);
+    return data;
+  } catch (err) {
+    if (!state.online) {
+      const cached = await cacheGet(cacheKey);
+      if (cached) return cached;
+    }
+    throw err;
+  }
+}
+
+// ════════════════════════════════════════════════════
+//  AUTH
+// ════════════════════════════════════════════════════
+async function doLogin() {
+  const username = document.getElementById('login-user').value.trim();
+  const password = document.getElementById('login-pass').value.trim();
+  if (!username || !password) { showLoginError('Identifiants requis'); return; }
+
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true;
+  btn.textContent = 'Connexion…';
+  document.getElementById('login-error').textContent = '';
+
+  try {
+    let user;
+    if (state.online) {
+      user = await api('/api/login', { method: 'POST', body: { username, password } });
+      // Sauvegarder localement pour login offline
+      await idbSet('auth', { key: 'session', user, ts: Date.now() });
+    } else {
+      // Mode offline : vérifier session sauvegardée
+      const saved = await idbGet('auth', 'session');
+      if (!saved) throw new Error('Connexion internet requise pour la première connexion');
+      user = saved.user;
+      if (user.username !== username) throw new Error('Utilisateur non reconnu hors ligne');
+    }
+    state.user  = user;
+    state.token = user.token;
+    startApp();
+  } catch (err) {
+    showLoginError(err.message || 'Erreur de connexion');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Se connecter';
+  }
+}
+
+function showLoginError(msg) {
+  document.getElementById('login-error').textContent = msg;
+}
+
+function doLogout() {
+  if (!confirm('Se déconnecter ?')) return;
+  state.user = null; state.token = null;
+  document.getElementById('app').classList.remove('active');
+  document.getElementById('login-screen').style.display = 'flex';
+}
+
+// ════════════════════════════════════════════════════
+//  APP START
+// ════════════════════════════════════════════════════
+async function startApp() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').classList.add('active');
+  document.getElementById('settings-user').textContent = state.user.full_name || state.user.username;
+  document.getElementById('settings-server').textContent = API_BASE;
+  updateOnlineUI();
+  await loadQueue();
+  await loadDashboard();
+  await loadRefData();
+}
+
+// ════════════════════════════════════════════════════
+//  NAVIGATION
+// ════════════════════════════════════════════════════
+function navTo(page, navItem) {
+  // Mettre à jour bottom nav
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (navItem) navItem.classList.add('active');
+  else {
+    const match = document.querySelector(`.nav-item[data-page="${page}"]`);
+    if (match) match.classList.add('active');
+  }
+  showPage(page);
+}
+
+function showPage(page, pushHistory = true) {
+  const cur = state.currentPage;
+  if (cur === page) return;
+  if (pushHistory && cur !== 'dashboard') state.pageHistory.push(cur);
+  
+  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+  const target = document.getElementById(`page-${page}`);
+  if (target) { target.classList.remove('hidden'); target.classList.add('active'); }
+
+  state.currentPage = page;
+  updateHeader(page);
+
+  // Charger les données de la page
+  const loaders = {
+    'bons_travail': loadBTs,
+    'planning':     loadPlanning,
+    'comptes_rendus': loadCRs,
+    'dashboard':    loadDashboard,
+  };
+  if (loaders[page]) loaders[page]();
+}
+
+function goBack() {
+  const prev = state.pageHistory.pop();
+  if (prev) showPage(prev, false);
+  else navTo('dashboard');
+}
+
+function updateHeader(page) {
+  const titles = {
+    'dashboard':     'Tableau de bord',
+    'bons_travail':  'Bons de travail',
+    'planning':      'Planning',
+    'comptes_rendus':'Comptes rendus',
+    'settings':      'Paramètres',
+    'bt-detail':     'Détail BT',
+  };
+  document.getElementById('header-title').textContent = titles[page] || '';
+  const back = document.getElementById('header-back');
+  const isRoot = ['dashboard','bons_travail','planning','comptes_rendus','settings'].includes(page);
+  back.classList.toggle('visible', !isRoot);
+}
+
+// ════════════════════════════════════════════════════
+//  ONLINE / OFFLINE
+// ════════════════════════════════════════════════════
+function updateOnlineUI() {
+  const dot    = document.getElementById('online-dot');
+  const banner = document.getElementById('offline-banner');
+  dot.classList.toggle('offline', !state.online);
+  banner.classList.toggle('visible', !state.online);
+  document.getElementById('settings-conn').textContent = state.online ? '🟢 En ligne' : '🔴 Hors ligne';
+}
+
+function updateQueueUI() {
+  const n     = state.offlineQueue.length;
+  const bar   = document.getElementById('sync-queue-bar');
+  const badge = document.getElementById('queue-badge');
+  document.getElementById('sync-queue-count').textContent = `${n} action(s) en attente de sync`;
+  document.getElementById('settings-queue').textContent   = `${n} action(s)`;
+  bar.classList.toggle('visible', n > 0);
+  badge.textContent = n > 0 ? n : '';
+  badge.style.display = n > 0 ? 'block' : 'none';
+}
+
+async function syncNow() {
+  if (!state.online) { showToast('Hors ligne — synchronisation impossible', 'warning'); return; }
+  const spinner = document.getElementById('sync-spinner');
+  spinner.classList.add('active');
+  try {
+    await replayOfflineQueue();
+    await loadDashboard(true);
+    if (state.currentPage === 'bons_travail') await loadBTs(true);
+    showToast('Synchronisation réussie ✓', 'success');
+  } catch(e) {
+    showToast('Erreur sync : ' + e.message, 'error');
+  } finally {
+    spinner.classList.remove('active');
+  }
+}
+
+async function replayOfflineQueue() {
+  if (!state.offlineQueue.length) return;
+  const toRetry = [...state.offlineQueue];
+  for (const item of toRetry) {
+    try {
+      await api(item.path, { method: item.method, body: item.body });
+      await idbDelete('queue', item.id);
+    } catch(e) {
+      console.warn('Queue replay failed:', item, e);
+    }
+  }
+  await loadQueue();
+}
+
+async function apiQueued(path, method, body) {
+  try {
+    const data = await api(path, { method, body });
+    return { data, offline: false };
+  } catch(e) {
+    if (!state.online) {
+      await idbSet('queue', { path, method, body, ts: Date.now() });
+      await loadQueue();
+      return { data: { _offline: true }, offline: true };
+    }
+    throw e;
+  }
+}
+
+// ════════════════════════════════════════════════════
+//  DASHBOARD
+// ════════════════════════════════════════════════════
+async function loadDashboard(force = false) {
+  try {
+    const bts = await apiCached('/api/bons_travail', 'bts', force);
+    state.bts = bts;
+
+    const ouvert  = bts.filter(b => b.statut === 'Ouvert').length;
+    const encours = bts.filter(b => b.statut === 'En cours').length;
+    const urgent  = bts.filter(b => b.priorite === 'Urgente' && b.statut !== 'Terminé').length;
+    const termine = bts.filter(b => b.statut === 'Terminé').length;
+
+    document.getElementById('kpi-grid').innerHTML = `
+      <div class="kpi-card accent" onclick="navTo('bons_travail')">
+        <div class="kpi-icon">📋</div>
+        <div class="kpi-value">${ouvert}</div>
+        <div class="kpi-label">Ouverts</div>
+      </div>
+      <div class="kpi-card orange" onclick="navTo('bons_travail')">
+        <div class="kpi-icon">⚙️</div>
+        <div class="kpi-value">${encours}</div>
+        <div class="kpi-label">En cours</div>
+      </div>
+      <div class="kpi-card red" onclick="navTo('bons_travail')">
+        <div class="kpi-icon">🚨</div>
+        <div class="kpi-value">${urgent}</div>
+        <div class="kpi-label">Urgents</div>
+      </div>
+      <div class="kpi-card green" onclick="navTo('bons_travail')">
+        <div class="kpi-icon">✅</div>
+        <div class="kpi-value">${termine}</div>
+        <div class="kpi-label">Terminés</div>
+      </div>
+    `;
+
+    // Badge nav BT
+    const badgeEl = document.getElementById('bt-badge');
+    if (urgent > 0) { badgeEl.textContent = urgent; badgeEl.style.display = 'block'; }
+    else badgeEl.style.display = 'none';
+
+    // Récents
+    const recents = bts.slice(0, 5);
+    document.getElementById('dash-bts').innerHTML = recents.length
+      ? recents.map(b => renderBTCard(b)).join('')
+      : '<div class="empty-state"><span class="empty-icon">📋</span><p>Aucun BT récent</p></div>';
+
+  } catch(e) {
+    document.getElementById('kpi-grid').innerHTML = `<div style="grid-column:1/-1;padding:20px;text-align:center;color:var(--muted)">${e.message}</div>`;
+  }
+}
+
+// ════════════════════════════════════════════════════
+//  BONS DE TRAVAIL
+// ════════════════════════════════════════════════════
+async function loadBTs(force = false) {
+  document.getElementById('bts-list').innerHTML = '<div class="loading"><div class="spinner"></div> Chargement…</div>';
+  try {
+    const bts = await apiCached('/api/bons_travail', 'bts', force);
+    state.bts = bts;
+    renderBTs();
+  } catch(e) {
+    document.getElementById('bts-list').innerHTML = `<div class="empty-state"><span class="empty-icon">⚠️</span><p>${e.message}</p></div>`;
+  }
+}
+
+function renderBTs() {
+  let data = state.bts;
+  if (state.btFilter)     data = data.filter(b => b.statut === state.btFilter);
+  if (state.btTypeFilter) data = data.filter(b => b.type_bt === state.btTypeFilter);
+  if (state.btSearch)     data = data.filter(b =>
+    (b.titre||'').toLowerCase().includes(state.btSearch) ||
+    (b.numero_bt||'').toLowerCase().includes(state.btSearch) ||
+    (b.equipement||'').toLowerCase().includes(state.btSearch)
+  );
+  const el = document.getElementById('bts-list');
+  el.innerHTML = data.length
+    ? data.map(b => renderBTCard(b)).join('')
+    : '<div class="empty-state"><span class="empty-icon">📋</span><p>Aucun résultat</p></div>';
+}
+
+function renderBTCard(b) {
+  const prio = (b.priorite||'').toLowerCase().replace('é','e').replace('è','e');
+  const stat = (b.statut||'').toLowerCase().replace(' ','');
+  const type = (b.type_bt||'').toLowerCase().replace('é','e').replace('è','e');
+  return `<div class="card ${prio}" onclick="openBTDetail(${b.id})">
+    <div class="card-header">
+      <div>
+        <div class="card-title">${b.titre||'—'}</div>
+        <div class="card-sub">${b.numero_bt||''} · ${b.equipement||'—'}</div>
+      </div>
+    </div>
+    <div class="card-meta">
+      <span class="badge badge-${stat}">${b.statut||''}</span>
+      <span class="badge badge-${prio}">${b.priorite||''}</span>
+      <span class="badge badge-${type}">${b.type_bt||''}</span>
+    </div>
+  </div>`;
+}
+
+function filterBT(val, el) {
+  state.btFilter = val;
+  state.btTypeFilter = '';
+  document.querySelectorAll('#page-bons_travail .filter-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderBTs();
+}
+
+function filterBTType(val, el) {
+  state.btFilter = '';
+  state.btTypeFilter = val;
+  document.querySelectorAll('#page-bons_travail .filter-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderBTs();
+}
+
+function filterBTs() {
+  state.btSearch = document.getElementById('bt-search').value.toLowerCase();
+  const clear = document.getElementById('bt-search-clear');
+  clear.style.display = state.btSearch ? 'block' : 'none';
+  renderBTs();
+}
+
+function clearSearch(type) {
+  document.getElementById(`${type}-search`).value = '';
+  state.btSearch = '';
+  document.getElementById(`${type}-search-clear`).style.display = 'none';
+  renderBTs();
+}
+
+// ── BT Detail ────────────────────────────────────────
+async function openBTDetail(id) {
+  showPage('bt-detail');
+  const el = document.getElementById('bt-detail-content');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Chargement…</div>';
+  try {
+    const bt = await api(`/api/bons_travail/${id}`);
+    const crs = await api(`/api/bons_travail/${id}/comptes_rendus`);
+    el.innerHTML = renderBTDetail(bt, crs);
+  } catch(e) {
+    // Fallback cache
+    const cached = state.bts.find(b => b.id === id);
+    if (cached) el.innerHTML = renderBTDetail(cached, []);
+    else el.innerHTML = `<div class="empty-state"><span class="empty-icon">⚠️</span><p>${e.message}</p></div>`;
+  }
+}
+
+function renderBTDetail(bt, crs) {
+  const prio = (bt.priorite||'').toLowerCase().replace('é','e').replace('è','e');
+  const stat = (bt.statut||'').toLowerCase().replace(' ','');
+  return `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <span class="badge badge-${stat}" style="padding:5px 12px;font-size:12px">${bt.statut||''}</span>
+      <span class="badge badge-${prio}" style="padding:5px 12px;font-size:12px">${bt.priorite||''}</span>
+    </div>
+    <div class="detail-section-title">Informations</div>
+    <div class="detail-card">
+      <div class="detail-row"><span class="detail-label">Numéro</span><span class="detail-value">${bt.numero_bt||'—'}</span></div>
+      <div class="detail-row"><span class="detail-label">Titre</span><span class="detail-value">${bt.titre||'—'}</span></div>
+      <div class="detail-row"><span class="detail-label">Type</span><span class="detail-value">${bt.type_bt||'—'}</span></div>
+      <div class="detail-row"><span class="detail-label">Équipement</span><span class="detail-value">${bt.equipement||'—'}</span></div>
+      <div class="detail-row"><span class="detail-label">Projet</span><span class="detail-value">${bt.projet||'—'}</span></div>
+      <div class="detail-row"><span class="detail-label">Technicien</span><span class="detail-value">${bt.technicien_username||'—'}</span></div>
+      <div class="detail-row"><span class="detail-label">Date ouverture</span><span class="detail-value">${bt.date_ouverture||'—'}</span></div>
+      <div class="detail-row"><span class="detail-label">Date prévue</span><span class="detail-value">${bt.date_prevue||'—'}</span></div>
+    </div>
+    ${bt.description ? `<div class="detail-section-title">Description</div><div class="detail-card"><div style="padding:6px 0;font-size:14px;line-height:1.5">${bt.description}</div></div>` : ''}
+    <div class="action-bar">
+      ${bt.statut !== 'En cours' ? `<button class="btn btn-warning" onclick="updateBTStatus(${bt.id},'En cours')">▶ En cours</button>` : ''}
+      ${bt.statut !== 'Terminé'  ? `<button class="btn btn-success" onclick="updateBTStatus(${bt.id},'Terminé')">✓ Terminer</button>` : ''}
+      <button class="btn btn-outline" onclick="openCRForm(${bt.id})">+ CR</button>
+    </div>
+    <div class="detail-section-title">Comptes rendus (${crs.length})</div>
+    ${crs.length ? crs.map(cr => `
+      <div class="detail-card">
+        <div class="detail-row"><span class="detail-label">Date</span><span class="detail-value">${cr.date_intervention||'—'}</span></div>
+        <div class="detail-row"><span class="detail-label">Heures</span><span class="detail-value">${cr.heure_debut||''} → ${cr.heure_fin||''}</span></div>
+        <div class="detail-row"><span class="detail-label">Statut</span><span class="detail-value">${cr.statut||'—'}</span></div>
+        ${cr.remarques ? `<div style="padding:8px 0;font-size:13px;color:var(--muted)">${cr.remarques}</div>` : ''}
+      </div>
+    `).join('') : '<div class="empty-state" style="padding:24px"><span class="empty-icon" style="font-size:32px">📝</span><p>Aucun compte rendu</p></div>'}
+  `;
+}
+
+async function updateBTStatus(id, statut) {
+  try {
+    const { offline } = await apiQueued(`/api/bons_travail/${id}`, 'PATCH', { statut });
+    showToast(offline ? `Statut sauvegardé hors ligne` : `Statut mis à jour : ${statut}`, offline ? 'warning' : 'success');
+    await openBTDetail(id);
+    // Mettre à jour le cache local
+    const bt = state.bts.find(b => b.id === id);
+    if (bt) { bt.statut = statut; await cacheSet('bts', state.bts); }
+  } catch(e) {
+    showToast('Erreur : ' + e.message, 'error');
+  }
+}
+
+// ── BT Form ──────────────────────────────────────────
+function openBTForm() {
+  document.getElementById('bf-titre').value = '';
+  document.getElementById('bf-description').value = '';
+  openModal('bt-form-modal');
+}
+
+async function saveBT() {
+  const titre = document.getElementById('bf-titre').value.trim();
+  if (!titre) { showToast('Le titre est requis', 'error'); return; }
+  const body = {
+    titre,
+    type_bt:              document.getElementById('bf-type').value,
+    priorite:             document.getElementById('bf-priorite').value,
+    equipement_id:        document.getElementById('bf-equipement').value || null,
+    technicien_username:  document.getElementById('bf-tech').value || state.user.username,
+    description:          document.getElementById('bf-description').value,
+    date_ouverture:       new Date().toISOString().split('T')[0],
+  };
+  try {
+    const { offline } = await apiQueued('/api/bons_travail', 'POST', body);
+    closeModal('bt-form-modal');
+    showToast(offline ? 'BT sauvegardé hors ligne ⏳' : 'BT créé ✓', offline ? 'warning' : 'success');
+    await loadBTs(true);
+  } catch(e) {
+    showToast('Erreur : ' + e.message, 'error');
+  }
+}
+
+// ════════════════════════════════════════════════════
+//  PLANNING — CALENDRIER
+// ════════════════════════════════════════════════════
+async function loadPlanning(force = false) {
+  try {
+    const data = await apiCached('/api/planning', 'planning', force);
+    state.planning = data;
+    renderCalendar();
+    renderPlanningList(state.calSelected);
+  } catch(e) {
+    showToast('Planning : ' + e.message, 'error');
+  }
+}
+
+function renderCalendar() {
+  const d   = state.calDate;
+  const yr  = d.getFullYear();
+  const mo  = d.getMonth();
+  const mois = ['Janvier','Février','Mars','Avril','Mai','Juin',
+                 'Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  document.getElementById('cal-month-label').textContent = `${mois[mo]} ${yr}`;
+
+  const eventDays = new Set(state.planning.map(p => p.date_prevue));
+  const today     = new Date();
+  const firstDay  = new Date(yr, mo, 1).getDay();
+  const daysInMo  = new Date(yr, mo + 1, 0).getDate();
+  const offset    = (firstDay + 6) % 7; // Lundi en premier
+
+  const dayHeaders = ['L','M','M','J','V','S','D'];
+  let html = dayHeaders.map(h => `<div class="cal-day-header">${h}</div>`).join('');
+
+  for (let i = 0; i < offset; i++) {
+    const prevDay = new Date(yr, mo, -offset + i + 1);
+    html += `<div class="cal-day other-month">${prevDay.getDate()}</div>`;
+  }
+  for (let d2 = 1; d2 <= daysInMo; d2++) {
+    const dateStr = `${yr}-${String(mo+1).padStart(2,'0')}-${String(d2).padStart(2,'0')}`;
+    const isToday = today.getDate()===d2 && today.getMonth()===mo && today.getFullYear()===yr;
+    const isSel   = state.calSelected === dateStr;
+    const hasEvt  = eventDays.has(dateStr);
+    html += `<div class="cal-day${isToday?' today':''}${isSel?' selected':''}${hasEvt?' has-events':''}" onclick="selectCalDay('${dateStr}')">${d2}</div>`;
+  }
+  document.getElementById('cal-grid').innerHTML = html;
+}
+
+function selectCalDay(dateStr) {
+  state.calSelected = dateStr;
+  renderCalendar();
+  renderPlanningList(dateStr);
+}
+
+function calPrev() { state.calDate.setMonth(state.calDate.getMonth()-1); renderCalendar(); }
+function calNext() { state.calDate.setMonth(state.calDate.getMonth()+1); renderCalendar(); }
+
+function renderPlanningList(dateStr) {
+  const title = document.getElementById('planning-day-title');
+  const list  = document.getElementById('planning-list');
+  let items = state.planning;
+  if (dateStr) {
+    items = items.filter(p => p.date_prevue === dateStr);
+    title.textContent = `Interventions du ${dateStr}`;
+  } else {
+    title.textContent = 'Prochaines interventions';
+    const today = new Date().toISOString().split('T')[0];
+    items = items.filter(p => p.date_prevue >= today).slice(0, 10);
+  }
+  list.innerHTML = items.length
+    ? items.map(p => `
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">${p.equipement||p.projet||'—'}</div>
+            <div class="card-sub">${p.heure_prevue||''} ${p.technicien_username||''}</div>
+          </div>
+          <span class="badge badge-${(p.statut||'').toLowerCase().replace(' ','')}">${p.statut||''}</span>
+        </div>
+        <div class="card-meta">
+          <span class="badge badge-maintenance">${p.type_intervention||'—'}</span>
+        </div>
+      </div>`).join('')
+    : '<div class="empty-state"><span class="empty-icon">📅</span><p>Aucune intervention</p>' + (dateStr ? '<small>Ce jour est libre</small>' : '') + '</div>';
+}
+
+// ════════════════════════════════════════════════════
+//  COMPTES RENDUS
+// ════════════════════════════════════════════════════
+async function loadCRs(force = false) {
+  document.getElementById('cr-list').innerHTML = '<div class="loading"><div class="spinner"></div> Chargement…</div>';
+  try {
+    const data = await apiCached('/api/comptes_rendus', 'crs', force);
+    state.crs = data;
+    renderCRs();
+  } catch(e) {
+    document.getElementById('cr-list').innerHTML = `<div class="empty-state"><span class="empty-icon">⚠️</span><p>${e.message}</p></div>`;
+  }
+}
+
+function renderCRs() {
+  document.getElementById('cr-list').innerHTML = state.crs.length
+    ? state.crs.map(cr => `
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">${cr.bt_titre||'—'}</div>
+            <div class="card-sub">${cr.numero_cr||''} · ${cr.date_intervention||''}</div>
+          </div>
+          <span class="badge badge-${(cr.statut||'').toLowerCase().replace(' ','')}">${cr.statut||''}</span>
+        </div>
+        ${cr.remarques ? `<div style="font-size:12px;color:var(--muted);margin-top:6px">${cr.remarques.slice(0,100)}${cr.remarques.length>100?'…':''}</div>` : ''}
+      </div>`).join('')
+    : '<div class="empty-state"><span class="empty-icon">📝</span><p>Aucun compte rendu</p></div>';
+}
+
+// ── CR Form ───────────────────────────────────────────
+function openCRForm(btId) {
+  document.getElementById('cf-bt-id').value = btId;
+  document.getElementById('cf-date').value  = new Date().toISOString().split('T')[0];
+  openModal('cr-form-modal');
+}
+
+async function saveCR() {
+  const btId = document.getElementById('cf-bt-id').value;
+  const body = {
+    bon_travail_id:    parseInt(btId),
+    date_intervention: document.getElementById('cf-date').value,
+    heure_debut:       document.getElementById('cf-hdebut').value,
+    heure_fin:         document.getElementById('cf-hfin').value,
+    remarques:         document.getElementById('cf-remarques').value,
+    statut:            document.getElementById('cf-statut').value,
+  };
+  try {
+    const { offline } = await apiQueued('/api/comptes_rendus', 'POST', body);
+    closeModal('cr-form-modal');
+    showToast(offline ? 'CR sauvegardé hors ligne ⏳' : 'Compte rendu créé ✓', offline ? 'warning' : 'success');
+    await openBTDetail(parseInt(btId));
+  } catch(e) {
+    showToast('Erreur : ' + e.message, 'error');
+  }
+}
+
+// ════════════════════════════════════════════════════
+//  REF DATA
+// ════════════════════════════════════════════════════
+async function loadRefData() {
+  try {
+    const [equips, techs] = await Promise.all([
+      apiCached('/api/equipements', 'equipements'),
+      apiCached('/api/techniciens', 'techniciens'),
+    ]);
+    state.equipements = equips;
+    state.techniciens = techs;
+
+    const selEq = document.getElementById('bf-equipement');
+    selEq.innerHTML = '<option value="">— Aucun —</option>' +
+      equips.map(e => `<option value="${e.id}">${e.nom}</option>`).join('');
+
+    const selTech = document.getElementById('bf-tech');
+    selTech.innerHTML = `<option value="${state.user.username}">${state.user.full_name||state.user.username} (moi)</option>` +
+      techs.filter(t => t.username !== state.user.username)
+           .map(t => `<option value="${t.username}">${t.full_name||t.username}</option>`).join('');
+  } catch(e) {
+    console.warn('Ref data load error:', e);
+  }
+}
+
+// ════════════════════════════════════════════════════
+//  SYNC QUEUE VIEWER
+// ════════════════════════════════════════════════════
+function showSyncQueue() {
+  const n = state.offlineQueue.length;
+  if (n === 0) { showToast('Aucune action en attente', 'success'); return; }
+  alert(`${n} action(s) en attente :\n\n` +
+    state.offlineQueue.slice(0,5).map(q => `• ${q.method} ${q.path}`).join('\n') +
+    (n > 5 ? `\n... et ${n-5} autre(s)` : '')
+  );
+}
+
+function clearCache() {
+  if (!confirm('Vider le cache local ? Les données seront rechargées depuis le serveur.')) return;
+  if (!state.idb) return;
+  const tx = state.idb.transaction('cache', 'readwrite');
+  tx.objectStore('cache').clear();
+  showToast('Cache vidé', 'success');
+}
+
+// ════════════════════════════════════════════════════
+//  MODAL / TOAST HELPERS
+// ════════════════════════════════════════════════════
+function openModal(id) {
+  document.getElementById(id).classList.add('active');
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('active');
+}
+
+let toastTimer;
+function showToast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// Swipe to close modals
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.classList.remove('active');
+  });
+});
+
+// Enter on login
+document.getElementById('login-pass').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+// ════════════════════════════════════════════════════
+//  SERVICE WORKER
+// ════════════════════════════════════════════════════
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').then(reg => {
+    console.log('SW registered:', reg.scope);
+  });
+  navigator.serviceWorker.addEventListener('message', evt => {
+    if (evt.data.type === 'REPLAY_QUEUE') replayOfflineQueue();
+  });
+}
+
+// ════════════════════════════════════════════════════
+//  ONLINE / OFFLINE EVENTS
+// ════════════════════════════════════════════════════
+window.addEventListener('online', () => {
+  state.online = true;
+  updateOnlineUI();
+  showToast('Connexion rétablie — synchronisation…', 'success');
+  setTimeout(() => replayOfflineQueue(), 1000);
+});
+window.addEventListener('offline', () => {
+  state.online = false;
+  updateOnlineUI();
+  showToast('Hors ligne — mode cache activé', 'warning');
+});
+
+// ════════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════════
+(async function init() {
+  state.idb    = await initIDB();
+  state.online = navigator.onLine;
+
+  // Afficher badge offline sur login si hors ligne
+  if (!state.online) {
+    document.getElementById('offline-badge').style.display = 'flex';
+  }
+
+  // Restaurer session
+  const saved = await idbGet('auth', 'session');
+  if (saved && saved.user && saved.user.token) {
+    state.user  = saved.user;
+    state.token = saved.user.token;
+    startApp();
+  }
+})();
+</script>
+</body>
+</html>
