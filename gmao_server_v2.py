@@ -656,6 +656,270 @@ def sync_status():
 #  DÉMARRAGE LOCAL
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ── CLIENTS ───────────────────────────────────────────────────────────────────
+
+@app.route("/api/clients", methods=["GET"])
+@require_auth
+def get_clients_full():
+    db = get_db()
+    search = request.args.get("q","")
+    sql = "SELECT * FROM clients WHERE 1=1"
+    params = []
+    if search:
+        sql += " AND (nom LIKE ? OR societe LIKE ? OR email LIKE ?)"
+        params += [f"%{search}%"]*3
+    sql += " ORDER BY COALESCE(societe,nom) LIMIT 500"
+    return jsonify([dict(r) for r in db.execute(sql, params).fetchall()])
+
+@app.route("/api/clients", methods=["POST"])
+@require_auth
+def create_client():
+    user = request.user
+    data = request.json or {}
+    nom  = (data.get("nom") or "").strip()
+    if not nom: return jsonify({"error": "Nom requis"}), 400
+    db = get_db()
+    db.execute("""INSERT INTO clients (nom, societe, prenom, email, telephone, notes, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?)""",
+        (nom, data.get("societe",""), data.get("prenom",""),
+         data.get("email",""), data.get("telephone",""),
+         data.get("notes",""), now(), now()))
+    db.commit()
+    new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    return jsonify({"id": new_id}), 201
+
+@app.route("/api/clients/<int:cl_id>", methods=["PATCH"])
+@require_auth
+def update_client(cl_id):
+    data = request.json or {}
+    db   = get_db()
+    sets, params = [], []
+    for f in ["nom","societe","prenom","email","telephone","notes"]:
+        if f in data: sets.append(f"{f}=?"); params.append(data[f])
+    if not sets: return jsonify({"error": "Rien à mettre à jour"}), 400
+    sets += ["updated_at=?"]; params += [now(), cl_id]
+    db.execute(f"UPDATE clients SET {', '.join(sets)} WHERE id=?", params)
+    db.commit()
+    return jsonify({"ok": True})
+
+# ── PROJETS ───────────────────────────────────────────────────────────────────
+
+@app.route("/api/projets", methods=["POST"])
+@require_auth
+def create_projet():
+    user = request.user
+    data = request.json or {}
+    titre = (data.get("titre") or "").strip()
+    if not titre: return jsonify({"error": "Titre requis"}), 400
+    db = get_db()
+    db.execute("""INSERT INTO projets (titre, numero_projet, client_id, gestionnaire_username, description, notes, created_by, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?)""",
+        (titre, data.get("numero_projet",""),
+         data.get("client_id") or None, data.get("gestionnaire_username") or None,
+         data.get("description",""), data.get("notes",""),
+         user["username"], now(), now()))
+    db.commit()
+    new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    return jsonify({"id": new_id}), 201
+
+@app.route("/api/projets/<int:pj_id>", methods=["PATCH"])
+@require_auth
+def update_projet(pj_id):
+    data = request.json or {}
+    db   = get_db()
+    sets, params = [], []
+    for f in ["titre","numero_projet","client_id","gestionnaire_username","description","notes"]:
+        if f in data: sets.append(f"{f}=?"); params.append(data[f] or None)
+    if not sets: return jsonify({"error": "Rien à mettre à jour"}), 400
+    sets += ["updated_at=?"]; params += [now(), pj_id]
+    db.execute(f"UPDATE projets SET {', '.join(sets)} WHERE id=?", params)
+    db.commit()
+    return jsonify({"ok": True})
+
+# ── ÉQUIPEMENTS (PATCH + POST) ────────────────────────────────────────────────
+
+@app.route("/api/equipements", methods=["POST"])
+@require_auth
+def create_equipement():
+    user = request.user
+    data = request.json or {}
+    nom  = (data.get("nom") or "").strip()
+    if not nom: return jsonify({"error": "Nom requis"}), 400
+    db = get_db()
+    db.execute("""INSERT INTO equipements
+        (nom, type_eq, marque, modele, numero_serie, emplacement, statut,
+         client_id, periodicite, date_installation, notes, created_by, updated_by, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (nom, data.get("type_eq",""), data.get("marque",""), data.get("modele",""),
+         data.get("numero_serie",""), data.get("emplacement",""),
+         data.get("statut","En service"), data.get("client_id") or None,
+         data.get("periodicite",""), data.get("date_installation") or None,
+         data.get("notes",""), user["username"], user["username"], now(), now()))
+    db.commit()
+    new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    return jsonify({"id": new_id}), 201
+
+@app.route("/api/equipements/<int:eq_id>", methods=["PATCH"])
+@require_auth
+def update_equipement(eq_id):
+    user = request.user
+    data = request.json or {}
+    db   = get_db()
+    sets, params = [], []
+    for f in ["nom","type_eq","marque","modele","numero_serie","emplacement","statut","client_id","periodicite","date_installation","notes"]:
+        if f in data: sets.append(f"{f}=?"); params.append(data[f] or None if f in ["client_id","date_installation"] else data[f])
+    if not sets: return jsonify({"error": "Rien à mettre à jour"}), 400
+    sets += ["updated_by=?","updated_at=?"]; params += [user["username"], now(), eq_id]
+    db.execute(f"UPDATE equipements SET {', '.join(sets)} WHERE id=?", params)
+    db.commit()
+    return jsonify({"ok": True})
+
+# ── GAMMES ────────────────────────────────────────────────────────────────────
+
+@app.route("/api/gammes", methods=["POST"])
+@require_auth
+def create_gamme():
+    user = request.user
+    data = request.json or {}
+    titre = (data.get("titre") or "").strip()
+    if not titre: return jsonify({"error": "Titre requis"}), 400
+    db = get_db()
+    db.execute("""INSERT INTO gammes (titre, domaine, periodicite, equipement_id, duree_estimee, description, created_by, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?)""",
+        (titre, data.get("domaine",""), data.get("periodicite",""),
+         data.get("equipement_id") or None, data.get("duree_estimee",""),
+         data.get("description",""), user["username"], now(), now()))
+    db.commit()
+    new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    return jsonify({"id": new_id}), 201
+
+@app.route("/api/gammes/<int:g_id>", methods=["PATCH"])
+@require_auth
+def update_gamme(g_id):
+    data = request.json or {}
+    db   = get_db()
+    sets, params = [], []
+    for f in ["titre","domaine","periodicite","equipement_id","duree_estimee","description"]:
+        if f in data: sets.append(f"{f}=?"); params.append(data[f] or None if f == "equipement_id" else data[f])
+    if not sets: return jsonify({"error": "Rien à mettre à jour"}), 400
+    sets += ["updated_at=?"]; params += [now(), g_id]
+    db.execute(f"UPDATE gammes SET {', '.join(sets)} WHERE id=?", params)
+    db.commit()
+    return jsonify({"ok": True})
+
+@app.route("/api/gammes/<int:g_id>/operations", methods=["GET"])
+@require_auth
+def get_operations(g_id):
+    db = get_db()
+    try:
+        rows = db.execute("SELECT * FROM operations_gamme WHERE gamme_id=? ORDER BY ordre", (g_id,)).fetchall()
+        return jsonify([dict(r) for r in rows])
+    except Exception as e:
+        return jsonify([])
+
+# ── UTILISATEURS ──────────────────────────────────────────────────────────────
+
+@app.route("/api/utilisateurs", methods=["GET"])
+@require_auth
+def get_utilisateurs():
+    db = get_db()
+    return jsonify([dict(r) for r in db.execute(
+        "SELECT id, username, full_name, email, role, lang, is_active, technique_access FROM utilisateurs ORDER BY full_name"
+    ).fetchall()])
+
+@app.route("/api/utilisateurs", methods=["POST"])
+@require_role("admin","gestionnaire")
+def create_utilisateur():
+    data = request.json or {}
+    username = (data.get("username") or "").strip()
+    password = (data.get("password") or "").strip()
+    if not username or not password: return jsonify({"error": "Identifiant et mot de passe requis"}), 400
+    db = get_db()
+    try:
+        db.execute("""INSERT INTO utilisateurs (username, password_hash, full_name, email, role, lang, is_active, created_at)
+            VALUES (?,?,?,?,?,?,1,?)""",
+            (username, hash_pw(password), data.get("full_name",""),
+             data.get("email",""), data.get("role","technicien"),
+             data.get("lang","fr"), now()))
+        db.commit()
+        new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        return jsonify({"id": new_id}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route("/api/utilisateurs/<int:u_id>", methods=["PATCH"])
+@require_role("admin","gestionnaire")
+def update_utilisateur(u_id):
+    data = request.json or {}
+    db   = get_db()
+    sets, params = [], []
+    for f in ["full_name","email","role","lang","is_active","technique_access"]:
+        if f in data: sets.append(f"{f}=?"); params.append(data[f])
+    if "password" in data and data["password"]:
+        sets.append("password_hash=?"); params.append(hash_pw(data["password"]))
+    if not sets: return jsonify({"error": "Rien à mettre à jour"}), 400
+    params.append(u_id)
+    db.execute(f"UPDATE utilisateurs SET {', '.join(sets)} WHERE id=?", params)
+    db.commit()
+    return jsonify({"ok": True})
+
+# ── ÉQUIPES ───────────────────────────────────────────────────────────────────
+
+@app.route("/api/equipes", methods=["GET"])
+@require_auth
+def get_equipes():
+    db = get_db()
+    try:
+        return jsonify([dict(r) for r in db.execute(
+            "SELECT * FROM equipes ORDER BY nom").fetchall()])
+    except Exception:
+        return jsonify([])
+
+@app.route("/api/equipes", methods=["POST"])
+@require_auth
+def create_equipe():
+    user = request.user
+    data = request.json or {}
+    nom  = (data.get("nom") or "").strip()
+    if not nom: return jsonify({"error": "Nom requis"}), 400
+    db = get_db()
+    db.execute("""INSERT INTO equipes (nom, description, gestionnaire_username, created_at, updated_at)
+        VALUES (?,?,?,?,?)""",
+        (nom, data.get("description",""),
+         data.get("gestionnaire_username") or None, now(), now()))
+    db.commit()
+    new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    return jsonify({"id": new_id}), 201
+
+@app.route("/api/equipes/<int:eq_id>", methods=["PATCH"])
+@require_auth
+def update_equipe(eq_id):
+    data = request.json or {}
+    db   = get_db()
+    sets, params = [], []
+    for f in ["nom","description","gestionnaire_username"]:
+        if f in data: sets.append(f"{f}=?"); params.append(data[f] or None)
+    if not sets: return jsonify({"error": "Rien à mettre à jour"}), 400
+    sets += ["updated_at=?"]; params += [now(), eq_id]
+    db.execute(f"UPDATE equipes SET {', '.join(sets)} WHERE id=?", params)
+    db.commit()
+    return jsonify({"ok": True})
+
+@app.route("/api/equipes/<int:eq_id>/membres", methods=["GET"])
+@require_auth
+def get_membres_equipe(eq_id):
+    db = get_db()
+    try:
+        rows = db.execute("""
+            SELECT et.technicien_username, COALESCE(u.full_name, et.technicien_username) AS full_name
+            FROM equipe_techniciens et
+            LEFT JOIN utilisateurs u ON et.technicien_username = u.username
+            WHERE et.equipe_id=?""", (eq_id,)).fetchall()
+        return jsonify([dict(r) for r in rows])
+    except Exception:
+        return jsonify([])
+
+
 if __name__ == "__main__":
     import socket
     try:    ip = socket.gethostbyname(socket.gethostname())
