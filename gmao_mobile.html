@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#1e293b">
+<title>GMAO Terrain</title>
+<link rel="manifest" href="/manifest.json">
+<style>
+:root{
+  --acc:#3b82f6;--acc2:#2563eb;--acc-l:#dbeafe;
+  --bg:#f1f5f9;--white:#fff;--text:#0f172a;--muted:#64748b;
+  --border:#e2e8f0;--red:#ef4444;--red-l:#fee2e2;
+  --orange:#f59e0b;--orange-l:#fef3c7;
+  --green:#22c55e;--green-l:#dcfce7;
+  --purple:#8b5cf6;--purple-l:#ede9fe;
+  --teal:#14b8a6;--teal-l:#ccfbf1;
+  --hh:58px;--bh:68px;--r:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:14px;-webkit-text-size-adjust:100%}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:2px}
+
+/* LOGIN */
+#login{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(160deg,#1e293b,#1e3a5f);padding:24px;position:fixed;inset:0;z-index:999}
+.lbox{background:#fff;border-radius:20px;padding:36px 28px;width:100%;max-width:380px;box-shadow:0 24px 60px rgba(0,0,0,.3)}
+.lhead{text-align:center;margin-bottom:28px}
+.lico{width:60px;height:60px;background:var(--acc);border-radius:16px;display:inline-flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:14px;box-shadow:0 8px 20px rgba(59,130,246,.4)}
+.lhead h1{font-size:20px;font-weight:800}
+.lhead p{font-size:12px;color:var(--muted);margin-top:3px}
+.lf{margin-bottom:14px}
+.lf label{display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+.lf input{width:100%;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;outline:none;font-size:16px;transition:.2s}
+.lf input:focus{border-color:var(--acc)}
+.lbtn{width:100%;background:var(--acc);color:#fff;border:none;border-radius:10px;padding:14px;font-size:16px;font-weight:700;cursor:pointer;margin-top:4px;transition:.15s}
+.lbtn:active{opacity:.8}
+.lerr{color:var(--red);font-size:12px;text-align:center;margin-top:8px;min-height:16px}
+
+/* APP */
+#app{display:none;height:100vh;flex-direction:column;overflow:hidden}
+#app.on{display:flex}
+
+/* HEADER */
+.hdr{height:var(--hh);background:#fff;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;z-index:10}
+.hdr-back{background:none;border:none;font-size:24px;cursor:pointer;color:var(--acc);padding:4px 8px 4px 0;display:none;font-weight:700}
+.hdr-back.on{display:block}
+.hdr-title{font-size:17px;font-weight:800;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hdr-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.offline-pill{background:var(--orange);color:#fff;border-radius:6px;padding:3px 8px;font-size:10px;font-weight:800;display:none}
+.offline-pill.on{display:block}
+.sync-btn{background:var(--acc-l);color:var(--acc2);border:none;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer}
+.sync-btn.spin-anim{animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+/* CONTENT */
+.mc{flex:1;overflow-y:auto;padding:16px;padding-bottom:calc(var(--bh) + 20px)}
+
+/* BOTTOM NAV */
+.bnav{height:var(--bh);background:#fff;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-around;flex-shrink:0;padding-bottom:env(safe-area-inset-bottom,0px);position:fixed;bottom:0;left:0;right:0;z-index:10;box-shadow:0 -1px 12px rgba(0,0,0,.06)}
+.bni{display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;padding:8px 4px 4px;cursor:pointer;border:none;background:none;color:var(--muted);font-size:10px;font-weight:600;transition:.15s;position:relative;font-family:inherit}
+.bni .ic{font-size:24px;line-height:1}
+.bni.on{color:var(--acc)}
+.bni .bb{position:absolute;top:4px;right:calc(50% - 20px);background:var(--red);color:#fff;border-radius:10px;font-size:9px;font-weight:800;padding:1px 5px;min-width:16px;text-align:center}
+
+/* BADGES */
+.bx{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:800;white-space:nowrap}
+.bx-ok{background:var(--green-l);color:#166534}
+.bx-warn{background:var(--orange-l);color:#92400e}
+.bx-danger{background:var(--red-l);color:#991b1b}
+.bx-info{background:var(--acc-l);color:#1e40af}
+.bx-neutral{background:var(--border);color:var(--muted)}
+.bx-purple{background:var(--purple-l);color:#5b21b6}
+.bx-teal{background:var(--teal-l);color:#0f766e}
+
+/* CARDS */
+.card{background:#fff;border-radius:var(--r);padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);border:1px solid var(--border);cursor:pointer;transition:.15s}
+.card:active{transform:scale(.98);background:#f8fafc}
+.card-header{display:flex;align-items:flex-start;gap:12px;margin-bottom:10px}
+.card-ico{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+.card-ico.maint{background:var(--teal-l)}
+.card-ico.dep{background:var(--purple-l)}
+.card-main{flex:1;min-width:0}
+.card-num{font-size:11px;color:var(--muted);font-weight:600;margin-bottom:2px}
+.card-title{font-size:15px;font-weight:700;line-height:1.3}
+.card-sub{font-size:12px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-footer{display:flex;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap;gap:6px}
+.card-date{font-size:11px;color:var(--muted)}
+.card-pending{font-size:10px;color:var(--orange);font-weight:700;background:var(--orange-l);padding:2px 8px;border-radius:8px}
+
+/* DETAIL */
+.dcard{background:#fff;border-radius:var(--r);padding:16px;margin-bottom:14px;border:1px solid var(--border)}
+.dtitle{font-size:11px;font-weight:800;color:var(--acc);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.drow{display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid #f1f5f9}
+.drow:last-child{border-bottom:none}
+.dlbl{font-size:12px;color:var(--muted);font-weight:600;flex-shrink:0;min-width:110px}
+.dval{font-size:13px;font-weight:600;text-align:right;word-break:break-word}
+
+/* STATUS BUTTONS */
+.sbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.sbtn{padding:10px 18px;border-radius:10px;font-size:13px;font-weight:700;border:none;cursor:pointer;transition:.15s;font-family:inherit}
+.sbtn:active{transform:scale(.97)}
+.sbtn-go{background:var(--orange);color:#fff}
+.sbtn-ok{background:var(--green);color:#fff}
+.sbtn-no{background:var(--red);color:#fff}
+.sbtn-cr{background:var(--acc);color:#fff}
+
+/* FORMS */
+.fg{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+.fg label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.fg input,.fg select,.fg textarea{border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;outline:none;font-size:15px;font-family:inherit;transition:.2s;background:#fff;-webkit-appearance:none;width:100%}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--acc)}
+.fg textarea{min-height:90px;resize:none}
+.btn-full{width:100%;padding:14px;border-radius:10px;font-size:15px;font-weight:700;border:none;cursor:pointer;transition:.15s;margin-top:8px;font-family:inherit}
+.btn-full:active{transform:scale(.98)}
+.btn-p{background:var(--acc);color:#fff}
+.btn-s{background:var(--green);color:#fff}
+.btn-n{background:var(--border);color:var(--text)}
+.btn-d{background:var(--red-l);color:var(--red)}
+
+/* PHOTOS */
+.pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.pthumb{aspect-ratio:1;border-radius:8px;object-fit:cover;width:100%;cursor:pointer;border:2px solid var(--border)}
+.padd{aspect-ratio:1;border-radius:8px;border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;font-size:28px;cursor:pointer;background:var(--bg);transition:.15s;flex-direction:column;gap:4px;font-family:inherit;border-color:var(--acc-l)}
+.padd span{font-size:10px;font-weight:700;color:var(--acc)}
+.padd:active{background:var(--border)}
+.pwrap{position:relative}
+.pdel{position:absolute;top:3px;right:3px;background:var(--red);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700}
+
+/* INTERVENANTS */
+.ivrow{background:var(--bg);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border)}
+.ivrow-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.ivrow-title{font-size:13px;font-weight:700}
+.ivdel{background:var(--red-l);color:var(--red);border:none;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
+.ivgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.ivgrid .fg{margin-bottom:0}
+.ivgrid .fg input{font-size:13px;padding:8px 10px}
+
+/* CR SECTION */
+.crsec{background:var(--bg);border-radius:10px;padding:14px;margin-bottom:10px;border:1px solid var(--border)}
+.crsec-title{font-size:11px;font-weight:800;color:var(--acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px}
+
+/* SYNC STATUS */
+.sync-bar{background:var(--orange-l);border:1px solid var(--orange);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px}
+.sync-bar-txt{flex:1;font-size:12px;font-weight:600;color:#92400e}
+.sync-now{background:var(--orange);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
+
+/* SECTION LABEL */
+.slbl{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:4px}
+
+/* EMPTY */
+.es{text-align:center;padding:48px 20px;color:var(--muted)}
+.es-ico{font-size:44px;display:block;margin-bottom:10px;opacity:.4}
+.es p{font-size:15px;font-weight:600}
+
+/* LOADING */
+.ld{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;gap:12px;color:var(--muted)}
+.spin{width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--acc);border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* PHOTO VIEWER */
+.pviewer{position:fixed;inset:0;background:rgba(0,0,0,.95);z-index:300;display:none;align-items:center;justify-content:center}
+.pviewer.on{display:flex}
+.pviewer img{max-width:100%;max-height:90vh;border-radius:8px}
+.pviewer-close{position:absolute;top:16px;right:16px;background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:50%;width:38px;height:38px;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit}
+
+/* TOAST */
+.toast{position:fixed;bottom:calc(var(--bh) + 12px);left:16px;right:16px;background:#1e293b;color:#fff;border-radius:12px;padding:13px 18px;font-size:13px;font-weight:600;z-index:400;opacity:0;transform:translateY(10px);transition:all .3s;pointer-events:none;text-align:center}
+.toast.on{opacity:1;transform:translateY(0)}
+.toast.ok{background:#16a34a}.toast.err{background:var(--red)}.toast.warn{background:var(--orange)}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login">
+  <div class="lbox">
+    <div class="lhead">
+      <div class="lico">&#128295;</div>
+      <h1>GMAO Terrain</h1>
+      <p>Application technicien</p>
+    </div>
+    <div class="lf"><label>Email</label><input type="email" id="lu" placeholder="technicien@gmao.fr" autocomplete="email" inputmode="email"></div>
+    <div class="lf"><label>Mot de passe</label><input type="password" id="lp" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" autocomplete="current-password"></div>
+    <button class="lbtn" id="lbtn">Se connecter</button>
+    <div class="lerr" id="lerr"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <header class="hdr">
+    <button class="hdr-back" id="hdr-back">&#8249;</button>
+    <div class="hdr-title" id="hdr-title">Aujourd'hui</div>
+    <div class="hdr-right">
+      <span class="offline-pill" id="offline-pill">HORS LIGNE</span>
+      <button class="sync-btn" id="sync-btn">&#8645; Sync</button>
+    </div>
+  </header>
+
+  <div class="mc" id="mc"></div>
+
+  <nav class="bnav">
+    <button class="bni on" data-p="today">
+      <span class="ic">&#128197;</span>Aujourd'hui
+    </button>
+    <button class="bni" data-p="interventions">
+      <span class="ic">&#128203;</span>Mes BT
+      <span class="bb" id="bb-bts" style="display:none"></span>
+    </button>
+    <button class="bni" data-p="pending">
+      <span class="ic">&#11014;</span>A sync
+      <span class="bb" id="bb-sync" style="display:none"></span>
+    </button>
+    <button class="bni" data-p="profil">
+      <span class="ic">&#128100;</span>Profil
+    </button>
+  </nav>
+</div>
+
+<!-- PHOTO VIEWER -->
+<div class="pviewer" id="pviewer">
+  <button class="pviewer-close" id="pv-close">&#10005;</button>
+  <img id="pv-img" src="" alt="">
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+// ── SERVICE WORKER ────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(function(){});
+}
+
+// ── INDEXEDDB ─────────────────────────────────────────────
+var idb = null;
+
+function openIDB() {
+  return new Promise(function(res, rej) {
+    var req = indexedDB.open('gmao_offline', 2);
+    req.onupgradeneeded = function(e) {
+      var db = e.target.result;
+      if (!db.objectStoreNames.contains('interventions'))
+        db.createObjectStore('interventions', {keyPath:'id'});
+      if (!db.objectStoreNames.contains('pending'))
+        db.createObjectStore('pending', {keyPath:'id', autoIncrement:true});
+      if (!db.objectStoreNames.contains('cache'))
+        db.createObjectStore('cache', {keyPath:'key'});
+    };
+    req.onsuccess = function(e) { res(e.target.result); };
+    req.onerror = function(e) { rej(e); };
+  });
+}
+
+function idbGet(store, key) {
+  return new Promise(function(res, rej) {
+    var tx = idb.transaction(store, 'readonly');
+    var req = tx.objectStore(store).get(key);
+    req.onsuccess = function() { res(req.result); };
+    req.onerror = rej;
+  });
+}
+
+function idbPut(store, val) {
+  return new Promise(function(res, rej) {
+    var tx = idb.transaction(store, 'readwrite');
+    var req = tx.objectStore(store).put(val);
+    req.onsuccess = function() { res(req.result); };
+    req.onerror = rej;
+  });
+}
+
+function idbGetAll(store) {
+  return new Promise(function(res, rej) {
+    var tx = idb.transaction(store, 'readonly');
+    var req = tx.objectStore(store).getAll();
+    req.onsuccess = function() { res(req.result); };
+    req.onerror = rej;
+  });
+}
+
+function idbDelete(store, key) {
+  return new Promise(function(res, rej) {
+    var tx = idb.transaction(store, 'readwrite');
+    var req = tx.objectStore(store).delete(key);
+    req.onsuccess = function() { res(); };
+    req.onerror = rej;
+  });
+}
+
+function idbClear(store) {
+  return new Promise(function(res, rej) {
+    var tx = idb.transaction(store, 'readwrite');
+    var req = tx.objectStore(store).clear();
+    req.onsuccess = function() { res(); };
+    req.onerror = rej;
+  });
+}
+
+// ── ÉTAT ──────────────────────────────────────────────────
+var API = window.location.origin;
+var S = {
+  user: null, token: null, online: navigator.onLine,
+  page: 'today', prevPage: null,
+  interventions: [], pending: [], utilisateurs: [],
+  currentInterv: null, crPhotos: [], crIntervenants: [],
+  fltIv: ''
+};
+
+// ── UTILITAIRES ───────────────────────────────────────────
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function today() { return new Date().toISOString().split('T')[0]; }
+function fdate(d) {
+  if (!d) return '--';
+  try { var p=d.split('T')[0].split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
+  catch(e) { return d; }
+}
+function ftime() {
+  var n=new Date();
+  return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+}
+
+function bstat(s) {
+  var m={
+    'A_PLANIFIER':'bx-info','PLANIFIEE':'bx-info',
+    'EN_COURS':'bx-warn','TERMINEE':'bx-ok','ANNULEE':'bx-neutral'
+  };
+  var l={
+    'A_PLANIFIER':'A planifier','PLANIFIEE':'Planifiee',
+    'EN_COURS':'En cours','TERMINEE':'Terminee','ANNULEE':'Annulee'
+  };
+  return '<span class="bx '+(m[s]||'bx-neutral')+'">'+(l[s]||s||'--')+'</span>';
+}
+function btype(t) {
+  return t==='MAINTENANCE'
+    ? '<span class="bx bx-teal">Maintenance</span>'
+    : '<span class="bx bx-purple">Depannage</span>';
+}
+function dr(lbl, val) {
+  return '<div class="drow"><span class="dlbl">'+esc(lbl)+'</span><span class="dval">'+esc(val||'--')+'</span></div>';
+}
+
+// ── API ───────────────────────────────────────────────────
+function apiCall(path, opts, cb) {
+  var h = {'Content-Type':'application/json'};
+  if (S.token) h['Authorization'] = 'Bearer '+S.token;
+  var fo = Object.assign({}, opts||{}, {headers:h});
+  if (fo.body) fo.body = JSON.stringify(fo.body);
+  fetch(API+path, fo)
+    .then(function(r) {
+      if (!r.ok) return r.json().then(function(j){throw new Error(j.error||'HTTP '+r.status);});
+      return r.json();
+    })
+    .then(function(d){if(cb)cb(null,d);})
+    .catch(function(e){if(cb)cb(e);});
+}
+
+function fetchP(path, method, body) {
+  return new Promise(function(res, rej) {
+    var h={'Content-Type':'application/json','Authorization':'Bearer '+S.token};
+    fetch(API+path,{method:method,headers:h,body:JSON.stringify(body)})
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+      .then(res).catch(rej);
+  });
+}
+
+// ── AUTH ──────────────────────────────────────────────────
+document.getElementById('lbtn').onclick = doLogin;
+document.getElementById('lp').onkeydown = function(e){if(e.key==='Enter')doLogin();};
+
+function doLogin() {
+  var em = document.getElementById('lu').value.trim();
+  var pw = document.getElementById('lp').value.trim();
+  if (!em||!pw){document.getElementById('lerr').textContent='Email et mot de passe requis';return;}
+  var btn = document.getElementById('lbtn');
+  btn.disabled=true; btn.textContent='Connexion...';
+  document.getElementById('lerr').textContent='';
+
+  if (!S.online) {
+    idbGet('cache','auth').then(function(saved){
+      btn.disabled=false; btn.textContent='Se connecter';
+      if (saved&&saved.email===em) {
+        S.user=saved.user; S.token=saved.token;
+        startApp();
+      } else {
+        document.getElementById('lerr').textContent='Connexion impossible hors ligne. Connectez-vous d\'abord en ligne.';
+      }
+    });
+    return;
+  }
+
+  apiCall('/api/login',{method:'POST',body:{email:em,password:pw}},function(err,user){
+    btn.disabled=false; btn.textContent='Se connecter';
+    if (err){document.getElementById('lerr').textContent=err.message||'Identifiants incorrects';return;}
+    S.user=user; S.token=user.token;
+    idbPut('cache',{key:'auth',email:em,user:user,token:user.token});
+    startApp();
+  });
+}
+
+// ── APP START ─────────────────────────────────────────────
+function startApp() {
+  document.getElementById('login').style.display='none';
+  document.getElementById('app').classList.add('on');
+  updateOnlineUI();
+  // Charger utilisateurs et interventions
+  loadAll(function(){navTo('today');});
+  loadPending();
+}
+
+function loadAll(done) {
+  var cnt=0, tot=2;
+  function chk(){cnt++;if(cnt>=tot&&done)done();}
+
+  if (S.online) {
+    apiCall('/api/utilisateurs',{},function(e,d){
+      if(!e&&d){
+        S.utilisateurs=d;
+        idbPut('cache',{key:'utilisateurs',data:d});
+      }
+      chk();
+    });
+    apiCall('/api/interventions?technicien=me',{},function(e,d){
+      if(!e&&d){
+        S.interventions=d;
+        idbClear('interventions').then(function(){
+          var ps=d.map(function(iv){return idbPut('interventions',iv);});
+          Promise.all(ps).then(function(){updateBtBadge();});
+        });
+      }
+      chk();
+    });
+  } else {
+    idbGet('cache','utilisateurs').then(function(s){if(s)S.utilisateurs=s.data;chk();});
+    idbGetAll('interventions').then(function(d){S.interventions=d||[];updateBtBadge();chk();});
+  }
+}
+
+function loadPending() {
+  idbGetAll('pending').then(function(d){
+    S.pending=d||[];
+    updatePendingBadge();
+  });
+}
+
+function updateBtBadge() {
+  var n=S.interventions.filter(function(i){return i.statut!=='TERMINEE'&&i.statut!=='ANNULEE';}).length;
+  var el=document.getElementById('bb-bts');
+  if(el){el.textContent=n;el.style.display=n>0?'block':'none';}
+}
+
+function updatePendingBadge() {
+  var n=S.pending.length;
+  var el=document.getElementById('bb-sync');
+  if(el){el.textContent=n;el.style.display=n>0?'block':'none';}
+}
+
+// ── NAVIGATION ────────────────────────────────────────────
+var TITLES={
+  today:"Aujourd'hui", interventions:'Mes interventions',
+  pending:'A synchroniser', profil:'Mon profil',
+  detail:'Intervention', cr:'Compte rendu'
+};
+
+document.querySelectorAll('.bni[data-p]').forEach(function(btn){
+  btn.onclick=function(){navTo(btn.dataset.p);};
+});
+document.getElementById('hdr-back').onclick=function(){
+  navTo(S.prevPage||'today');
+};
+document.getElementById('sync-btn').onclick=doSync;
+
+function navTo(page) {
+  var isDetail = page==='detail'||page==='cr';
+  document.querySelectorAll('.bni[data-p]').forEach(function(b){b.classList.remove('on');});
+  var main = isDetail?(S.page==='cr'?'interventions':S.page):page;
+  var btn = document.querySelector('.bni[data-p="'+main+'"]');
+  if(btn)btn.classList.add('on');
+  document.getElementById('hdr-back').classList.toggle('on',isDetail);
+  document.getElementById('hdr-title').textContent=TITLES[page]||page;
+  if(!isDetail)S.prevPage=S.page;
+  S.page=page;
+  renderPage();
+}
+
+function renderPage() {
+  var fns={
+    today:renderToday, interventions:renderInterventions,
+    pending:renderPending, profil:renderProfil,
+    detail:renderDetail, cr:renderCR
+  };
+  if(fns[S.page])fns[S.page]();
+}
+
+// ── TODAY ─────────────────────────────────────────────────
+function renderToday() {
+  var t=today();
+  var enCours=S.interventions.filter(function(i){return i.statut==='EN_COURS';});
+  var planAuj=S.interventions.filter(function(i){
+    return i.date_prevue&&i.date_prevue.startsWith(t)&&i.statut!=='TERMINEE'&&i.statut!=='ANNULEE'&&i.statut!=='EN_COURS';
+  });
+
+  var h='';
+  if(S.pending.length>0){
+    h+='<div class="sync-bar"><span style="font-size:18px">&#11014;</span><span class="sync-bar-txt">'+S.pending.length+' action(s) en attente</span><button class="sync-now" onclick="doSync()">Sync</button></div>';
+  }
+  if(enCours.length){
+    h+='<div class="slbl">En cours ('+enCours.length+')</div>';
+    enCours.forEach(function(i){h+=ivCard(i);});
+  }
+  h+='<div class="slbl">Planifiees aujourd\'hui ('+planAuj.length+')</div>';
+  if(!planAuj.length){
+    h+='<div class="es"><span class="es-ico">&#10003;</span><p>Aucune intervention aujourd\'hui</p></div>';
+  } else {
+    planAuj.forEach(function(i){h+=ivCard(i);});
+  }
+  document.getElementById('mc').innerHTML=h;
+  attachCardEvents();
+}
+
+// ── INTERVENTIONS ─────────────────────────────────────────
+function renderInterventions() {
+  var h='<div style="display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch">';
+  [['','Toutes'],['A_PLANIFIER','A planifier'],['PLANIFIEE','Planifiees'],['EN_COURS','En cours'],['TERMINEE','Terminees']].forEach(function(f){
+    h+='<button class="bx '+(S.fltIv===f[0]?'bx-info':'bx-neutral')+'" style="cursor:pointer;padding:6px 14px;white-space:nowrap;border:none;font-family:inherit" data-flt="'+f[0]+'">'+f[1]+'</button>';
+  });
+  h+='</div>';
+  var list=S.fltIv?S.interventions.filter(function(i){return i.statut===S.fltIv;}):S.interventions;
+  if(!list.length)h+='<div class="es"><span class="es-ico">&#128203;</span><p>Aucune intervention</p></div>';
+  else list.forEach(function(i){h+=ivCard(i);});
+  document.getElementById('mc').innerHTML=h;
+  attachCardEvents();
+  document.querySelectorAll('[data-flt]').forEach(function(btn){
+    btn.onclick=function(){S.fltIv=btn.dataset.flt;renderInterventions();};
+  });
+}
+
+function ivCard(i) {
+  var ico=i.type==='MAINTENANCE'?'&#128295;':'&#9889;';
+  var cls=i.type==='MAINTENANCE'?'maint':'dep';
+  var pend=S.pending.filter(function(p){return p.interv_id===i.id;}).length;
+  return '<div class="card" data-id="'+i.id+'">'
+    +'<div class="card-header">'
+    +'<div class="card-ico '+cls+'">'+ico+'</div>'
+    +'<div class="card-main">'
+    +'<div class="card-num">'+esc(i.numero)+'</div>'
+    +'<div class="card-title">'+esc(i.equip_nom||'--')+'</div>'
+    +'<div class="card-sub">'+esc(i.projet_nom||'--')+(i.localisation?' · '+esc(i.localisation):'')+'</div>'
+    +'</div></div>'
+    +'<div class="card-footer">'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap">'+bstat(i.statut)+' '+btype(i.type)+'</div>'
+    +(pend>0?'<span class="card-pending">&#11014; '+pend+' en attente</span>':'<span class="card-date">&#128197; '+fdate(i.date_prevue)+'</span>')
+    +'</div></div>';
+}
+
+function attachCardEvents() {
+  document.querySelectorAll('.card[data-id]').forEach(function(el){
+    el.onclick=function(){
+      var id=parseInt(el.dataset.id);
+      var iv=S.interventions.find(function(x){return x.id===id;});
+      if(iv){S.currentInterv=iv;navTo('detail');}
+    };
+  });
+}
+
+// ── DETAIL INTERVENTION ───────────────────────────────────
+function renderDetail() {
+  var i=S.currentInterv;
+  if(!i){navTo('today');return;}
+
+  // Toujours charger les données fraîches depuis le serveur si online
+  if(S.online) {
+    document.getElementById('mc').innerHTML='<div class="ld"><div class="spin"></div></div>';
+    apiCall('/api/interventions/'+i.id,{},function(err,full){
+      if(!err&&full){
+        S.currentInterv=full;
+        // Mettre à jour dans la liste locale
+        var idx=S.interventions.findIndex(function(x){return x.id===full.id;});
+        if(idx>=0)S.interventions[idx]=full;
+        idbPut('interventions',full);
+      }
+      doRenderDetail(S.currentInterv);
+    });
+  } else {
+    doRenderDetail(i);
+  }
+}
+
+function doRenderDetail(i) {
+  var h='';
+
+  // Boutons de statut
+  h+='<div class="sbar">';
+  if(i.statut==='A_PLANIFIER'||i.statut==='PLANIFIEE'){
+    h+='<button class="sbtn sbtn-go" data-ns="EN_COURS">&#9654; Demarrer</button>';
+  }
+  if(i.statut==='EN_COURS'){
+    h+='<button class="sbtn sbtn-ok" data-ns="TERMINEE">&#10003; Terminer</button>';
+    h+='<button class="sbtn sbtn-cr">&#128221; Compte rendu</button>';
+  }
+  if(i.statut==='TERMINEE'){
+    h+='<button class="sbtn sbtn-cr">&#128221; Voir CR</button>';
+  }
+  if(i.statut!=='TERMINEE'&&i.statut!=='ANNULEE'){
+    h+='<button class="sbtn sbtn-no" data-ns="ANNULEE">&#10005; Annuler</button>';
+  }
+  h+='</div>';
+
+  // Infos
+  h+='<div class="dcard"><div class="dtitle">Intervention</div>';
+  h+=dr('Reference',i.numero);
+  h+=dr('Type',i.type==='MAINTENANCE'?'Maintenance':'Depannage');
+  h+=dr('Statut',i.statut.replace(/_/g,' '));
+  h+=dr('Date prevue',fdate(i.date_prevue));
+  h+=dr('Date realisation',fdate(i.date_realisation));
+  h+='</div>';
+
+  h+='<div class="dcard"><div class="dtitle">Equipement</div>';
+  h+=dr('Designation',i.equip_nom);
+  h+=dr('Type technique',(i.type_technique||'--').replace(/_/g,' '));
+  h+=dr('Projet',i.projet_nom);
+  h+=dr('Localisation',i.localisation);
+  h+='</div>';
+
+  if(i.description){
+    h+='<div class="dcard"><div class="dtitle">Description</div>';
+    h+='<p style="font-size:14px;line-height:1.6">'+esc(i.description)+'</p></div>';
+  }
+
+  // Compte rendu
+  h+='<div class="dcard"><div class="dtitle">Compte rendu</div>';
+  var cr=i.compte_rendu;
+  if(!cr){
+    h+='<p style="color:var(--muted);font-size:13px">Aucun compte rendu</p>';
+  } else {
+    if(cr.observations)h+='<div class="crsec"><div class="crsec-title">Observations</div><p style="font-size:13px;line-height:1.5">'+esc(cr.observations)+'</p></div>';
+    if(cr.actions_realisees)h+='<div class="crsec"><div class="crsec-title">Actions realisees</div><p style="font-size:13px;line-height:1.5">'+esc(cr.actions_realisees)+'</p></div>';
+    if(cr.mesures)h+='<div class="crsec"><div class="crsec-title">Mesures</div><p style="font-size:13px;line-height:1.5">'+esc(cr.mesures)+'</p></div>';
+    if(cr.recommandations)h+='<div class="crsec"><div class="crsec-title">Recommandations</div><p style="font-size:13px;line-height:1.5">'+esc(cr.recommandations)+'</p></div>';
+    if(cr.conclusion)h+='<div class="crsec"><div class="crsec-title">Conclusion</div><p style="font-size:13px;line-height:1.5">'+esc(cr.conclusion)+'</p></div>';
+    if(cr.intervenants&&cr.intervenants.length){
+      h+='<div class="crsec"><div class="crsec-title">Intervenants ('+cr.total_heures+'h)</div>';
+      cr.intervenants.forEach(function(iv){
+        h+='<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">';
+        h+='<span style="font-weight:600">'+esc(iv.nom)+'</span>';
+        h+='<span style="color:var(--muted)">'+fdate(iv.date)+' '+( iv.heure_debut||'')+'-'+(iv.heure_fin||'')+' ('+iv.total_heures+'h)</span>';
+        h+='</div>';
+      });
+      h+='</div>';
+    }
+    // Photos
+    if(cr.photos){
+      try{
+        var photos=typeof cr.photos==='string'?JSON.parse(cr.photos):cr.photos;
+        if(photos&&photos.length){
+          h+='<div class="crsec"><div class="crsec-title">Photos ('+photos.length+')</div>';
+          h+='<div class="pgrid">';
+          photos.forEach(function(p,idx){
+            h+='<img class="pthumb" src="'+p.data+'" data-pv="'+idx+'" style="cursor:pointer">';
+          });
+          h+='</div></div>';
+          // Stocker photos pour viewer
+          window._crPhotosView=photos;
+        }
+      }catch(e){}
+    }
+  }
+  h+='</div>';
+
+  document.getElementById('mc').innerHTML=h;
+
+  // Events boutons statut
+  document.querySelectorAll('[data-ns]').forEach(function(btn){
+    btn.onclick=function(){changeStatut(i.id,btn.dataset.ns);};
+  });
+
+  // Bouton CR
+  document.querySelectorAll('.sbtn-cr').forEach(function(btn){
+    btn.onclick=function(){
+      S.crIntervenants=[];S.crPhotos=[];
+      if(cr){
+        S.crIntervenants=(cr.intervenants||[]).map(function(iv){
+          return {uid:iv.utilisateur_id,nom:iv.nom,date:iv.date||today(),hd:iv.heure_debut||'',hf:iv.heure_fin||''};
+        });
+      }
+      navTo('cr');
+    };
+  });
+
+  // Photo viewer
+  document.querySelectorAll('[data-pv]').forEach(function(img){
+    img.onclick=function(){
+      var idx=parseInt(img.dataset.pv);
+      document.getElementById('pv-img').src=window._crPhotosView[idx].data;
+      document.getElementById('pviewer').classList.add('on');
+    };
+  });
+}
+
+function changeStatut(id, newStat) {
+  var action={type:'statut',interv_id:id,statut:newStat,ts:Date.now()};
+  // Mise à jour locale
+  var iv=S.interventions.find(function(x){return x.id===id;});
+  if(iv){iv.statut=newStat;idbPut('interventions',iv);}
+  if(S.currentInterv&&S.currentInterv.id===id)S.currentInterv.statut=newStat;
+
+  if(S.online){
+    apiCall('/api/interventions/'+id,{method:'PATCH',body:{statut:newStat}},function(err){
+      if(err){toast('Erreur - action en attente','warn');queueAction(action);}
+      else{toast('Statut mis a jour','ok');}
+      // Recharger le detail
+      apiCall('/api/interventions/'+id,{},function(e2,full){
+        if(!e2&&full){S.currentInterv=full;var idx=S.interventions.findIndex(function(x){return x.id===full.id;});if(idx>=0)S.interventions[idx]=full;idbPut('interventions',full);}
+        doRenderDetail(S.currentInterv);
+      });
+    });
+  } else {
+    queueAction(action);
+    toast('Hors ligne - action enregistree','warn');
+    doRenderDetail(S.currentInterv);
+  }
+}
+
+// ── COMPTE RENDU ──────────────────────────────────────────
+function renderCR() {
+  var i=S.currentInterv;
+  if(!i){navTo('today');return;}
+  var cr=(i.compte_rendu)||{};
+
+  var h='';
+  h+='<div class="fg"><label>Date</label><input type="date" id="crd" value="'+(cr.date_intervention||today())+'"></div>';
+  h+='<div class="fg"><label>Observations</label><textarea id="cro" placeholder="Observations...">'+esc(cr.observations||'')+'</textarea></div>';
+  h+='<div class="fg"><label>Actions realisees</label><textarea id="cra" placeholder="Actions effectuees...">'+esc(cr.actions_realisees||'')+'</textarea></div>';
+  h+='<div class="fg"><label>Mesures relevees</label><textarea id="crm" placeholder="Tensions, courants...">'+esc(cr.mesures||'')+'</textarea></div>';
+  h+='<div class="fg"><label>Recommandations</label><textarea id="crr" placeholder="Travaux a prevoir...">'+esc(cr.recommandations||'')+'</textarea></div>';
+  h+='<div class="fg"><label>Conclusion</label><textarea id="crc" placeholder="Conclusion...">'+esc(cr.conclusion||'')+'</textarea></div>';
+
+  // Intervenants
+  h+='<div class="slbl">Intervenants</div>';
+  h+='<div id="iv-list"></div>';
+  h+='<button class="btn-full btn-n" id="add-iv-btn" style="margin-bottom:16px">+ Ajouter un intervenant</button>';
+
+  // Photos
+  h+='<div class="slbl">Photos</div>';
+  h+='<div class="pgrid" id="photos-grid"></div>';
+
+  h+='<button class="btn-full btn-p" id="save-cr-btn" style="margin-top:16px">&#128190; Enregistrer le compte rendu</button>';
+
+  document.getElementById('mc').innerHTML=h;
+  renderIvList();
+  renderPhotos();
+
+  document.getElementById('add-iv-btn').onclick=function(){
+    S.crIntervenants.push({uid:'',nom:'',date:today(),hd:'',hf:''});
+    renderIvList();
+  };
+
+  document.getElementById('save-cr-btn').onclick=saveCR;
+}
+
+function renderIvList() {
+  var el=document.getElementById('iv-list');
+  if(!el)return;
+  if(!S.crIntervenants.length){
+    el.innerHTML='<p style="color:var(--muted);font-size:13px;margin-bottom:12px">Aucun intervenant</p>';
+    return;
+  }
+  el.innerHTML=S.crIntervenants.map(function(iv,i){
+    return '<div class="ivrow">'
+      +'<div class="ivrow-head"><span class="ivrow-title">Intervenant '+(i+1)+'</span><button class="ivdel" data-del="'+i+'">&#10005; Supprimer</button></div>'
+      +'<div class="fg"><label>Technicien</label><select class="iv-sel" data-idx="'+i+'">'
+      +'<option value="">-- Selectionner --</option>'
+      +S.utilisateurs.map(function(u){return '<option value="'+u.id+'"'+(iv.uid==u.id?' selected':'')+'>'+esc(u.nom)+'</option>';}).join('')
+      +'</select></div>'
+      +'<div class="ivgrid">'
+      +'<div class="fg"><label>Date</label><input type="date" class="iv-date" data-idx="'+i+'" value="'+(iv.date||today())+'"></div>'
+      +'<div class="fg"><label>Debut</label><input type="time" class="iv-hd" data-idx="'+i+'" value="'+(iv.hd||'')+'"></div>'
+      +'<div class="fg"><label>Fin</label><input type="time" class="iv-hf" data-idx="'+i+'" value="'+(iv.hf||'')+'"></div>'
+      +'</div></div>';
+  }).join('');
+
+  el.querySelectorAll('.iv-sel').forEach(function(s){s.onchange=function(){S.crIntervenants[parseInt(s.dataset.idx)].uid=s.value;};});
+  el.querySelectorAll('.iv-date').forEach(function(s){s.onchange=function(){S.crIntervenants[parseInt(s.dataset.idx)].date=s.value;};});
+  el.querySelectorAll('.iv-hd').forEach(function(s){s.onchange=function(){S.crIntervenants[parseInt(s.dataset.idx)].hd=s.value;};});
+  el.querySelectorAll('.iv-hf').forEach(function(s){s.onchange=function(){S.crIntervenants[parseInt(s.dataset.idx)].hf=s.value;};});
+  el.querySelectorAll('.ivdel').forEach(function(btn){
+    btn.onclick=function(){S.crIntervenants.splice(parseInt(btn.dataset.del),1);renderIvList();};
+  });
+}
+
+function renderPhotos() {
+  var el=document.getElementById('photos-grid');
+  if(!el)return;
+  var h=S.crPhotos.map(function(p,i){
+    return '<div class="pwrap"><img class="pthumb" src="'+p.data+'"><button class="pdel" data-del="'+i+'">&#10005;</button></div>';
+  }).join('');
+  h+='<button class="padd" id="add-photo-btn"><span style="font-size:28px">&#128247;</span><span>Ajouter</span></button>';
+  el.innerHTML=h;
+
+  document.getElementById('add-photo-btn').onclick=function(){
+    var inp=document.createElement('input');
+    inp.type='file';inp.accept='image/*';
+    inp.onchange=function(){
+      if(!inp.files[0])return;
+      var r=new FileReader();
+      r.onload=function(e){
+        S.crPhotos.push({data:e.target.result,name:inp.files[0].name});
+        renderPhotos();
+      };
+      r.readAsDataURL(inp.files[0]);
+    };
+    inp.click();
+  };
+
+  el.querySelectorAll('.pdel').forEach(function(btn){
+    btn.onclick=function(e){
+      e.stopPropagation();
+      S.crPhotos.splice(parseInt(btn.dataset.del),1);
+      renderPhotos();
+    };
+  });
+
+  el.querySelectorAll('.pthumb').forEach(function(img){
+    img.onclick=function(){
+      document.getElementById('pv-img').src=img.src;
+      document.getElementById('pviewer').classList.add('on');
+    };
+  });
+}
+
+function saveCR() {
+  var i=S.currentInterv;
+  var body={
+    date_intervention:document.getElementById('crd').value,
+    observations:document.getElementById('cro').value,
+    actions_realisees:document.getElementById('cra').value,
+    mesures:document.getElementById('crm').value,
+    recommandations:document.getElementById('crr').value,
+    conclusion:document.getElementById('crc').value,
+    intervenants:S.crIntervenants.filter(function(iv){return iv.uid||iv.nom;}).map(function(iv){
+      var u=S.utilisateurs.find(function(x){return x.id==iv.uid;});
+      return {
+        utilisateur_id:iv.uid?parseInt(iv.uid):null,
+        nom:iv.nom||(u?u.nom:''),
+        date:iv.date||today(),
+        heure_debut:iv.hd||'',
+        heure_fin:iv.hf||''
+      };
+    }),
+    photos:S.crPhotos
+  };
+
+  if(S.online){
+    apiCall('/api/comptes_rendus/'+i.id,{method:'POST',body:body},function(err){
+      if(err){
+        toast('Erreur - CR mis en attente','warn');
+        queueAction({type:'cr',interv_id:i.id,data:body,ts:Date.now()});
+      } else {
+        toast('Compte rendu enregistre','ok');
+        S.crIntervenants=[];S.crPhotos=[];
+        // Recharger le detail avec le CR
+        apiCall('/api/interventions/'+i.id,{},function(e2,full){
+          if(!e2&&full){
+            S.currentInterv=full;
+            var idx=S.interventions.findIndex(function(x){return x.id===full.id;});
+            if(idx>=0)S.interventions[idx]=full;
+            idbPut('interventions',full);
+          }
+          navTo('detail');
+        });
+      }
+    });
+  } else {
+    queueAction({type:'cr',interv_id:i.id,data:body,ts:Date.now()});
+    toast('Hors ligne - CR enregistre localement','warn');
+    S.crIntervenants=[];S.crPhotos=[];
+    navTo('detail');
+  }
+}
+
+// ── PENDING ───────────────────────────────────────────────
+function queueAction(action) {
+  idbPut('pending',action).then(function(){loadPending();});
+}
+
+function renderPending() {
+  if(!S.pending.length){
+    document.getElementById('mc').innerHTML='<div class="es"><span class="es-ico">&#10003;</span><p>Tout est synchronise</p></div>';
+    return;
+  }
+  var h='<div class="sync-bar"><span style="font-size:18px">&#11014;</span><span class="sync-bar-txt">'+S.pending.length+' action(s) en attente</span>'+(S.online?'<button class="sync-now" onclick="doSync()">Sync</button>':'<span style="font-size:11px;color:#92400e">Hors ligne</span>')+'</div>';
+  S.pending.forEach(function(p){
+    var lbl=p.type==='cr'?'Compte rendu':'Statut → '+p.statut;
+    var ts=new Date(p.ts).toLocaleString('fr-FR');
+    h+='<div class="card" style="cursor:default">'
+      +'<div class="card-header">'
+      +'<div class="card-ico '+(p.type==='cr'?'maint':'dep')+'">'+(p.type==='cr'?'&#128221;':'&#9889;')+'</div>'
+      +'<div class="card-main"><div class="card-title">'+esc(lbl)+'</div><div class="card-sub">Intervention #'+p.interv_id+'</div></div>'
+      +'</div><div style="font-size:11px;color:var(--muted)">'+ts+'</div></div>';
+  });
+  document.getElementById('mc').innerHTML=h;
+}
+
+async function doSync() {
+  if(!S.online){toast('Pas de connexion','err');return;}
+  if(!S.pending.length){toast('Rien a synchroniser','ok');loadAll(function(){renderPage();});return;}
+  var btn=document.getElementById('sync-btn');
+  btn.classList.add('spin-anim');
+  toast('Synchronisation...','warn');
+  var ok=0,err=0;
+  for(var p of S.pending){
+    try{
+      if(p.type==='statut') await fetchP('/api/interventions/'+p.interv_id,'PATCH',{statut:p.statut});
+      else if(p.type==='cr') await fetchP('/api/comptes_rendus/'+p.interv_id,'POST',p.data);
+      await idbDelete('pending',p.id);
+      ok++;
+    }catch(e){err++;}
+  }
+  await loadPending();
+  btn.classList.remove('spin-anim');
+  loadAll(function(){renderPage();toast(ok+' sync'+(err?' '+err+' err':''),'ok');});
+}
+
+// ── PROFIL ────────────────────────────────────────────────
+function renderProfil() {
+  if(!S.user){navTo('today');return;}
+  var nm=S.user.nom||S.user.email||'?';
+  var total=S.interventions.length;
+  var term=S.interventions.filter(function(i){return i.statut==='TERMINEE';}).length;
+  var enc=S.interventions.filter(function(i){return i.statut==='EN_COURS';}).length;
+
+  var h='<div class="dcard" style="text-align:center;padding:28px 18px">';
+  h+='<div style="width:70px;height:70px;background:var(--acc);border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;color:#fff;margin:0 auto 14px">'+esc(nm.charAt(0).toUpperCase())+'</div>';
+  h+='<div style="font-size:20px;font-weight:800">'+esc(nm)+'</div>';
+  h+='<div style="font-size:13px;color:var(--muted);margin-top:4px">'+esc(S.user.email||'')+'</div>';
+  h+='<div style="margin-top:10px"><span class="bx bx-info">'+esc(S.user.role||'technicien')+'</span></div>';
+  h+='</div>';
+
+  h+='<div class="dcard"><div class="dtitle">Statistiques</div>';
+  h+=dr('Total interventions',total);
+  h+=dr('Terminees',term);
+  h+=dr('En cours',enc);
+  h+=dr('En attente sync',S.pending.length);
+  h+='</div>';
+
+  h+='<div class="dcard"><div class="dtitle">Connexion</div>';
+  h+=dr('Statut',S.online?'En ligne':'Hors ligne');
+  h+='</div>';
+
+  h+='<button class="btn-full btn-n" id="btn-sync-profil">&#8645; Synchroniser maintenant</button>';
+  h+='<button class="btn-full btn-d" id="btn-logout-profil" style="margin-top:8px;margin-bottom:80px">&#128682; Deconnexion</button>';
+
+  document.getElementById('mc').innerHTML=h;
+
+  document.getElementById('btn-sync-profil').onclick=function(){doSync();};
+  document.getElementById('btn-logout-profil').onclick=function(){
+    if(!confirm('Se deconnecter ?'))return;
+    S.user=null;S.token=null;
+    idbDelete('cache','auth');
+    document.getElementById('app').classList.remove('on');
+    document.getElementById('login').style.display='flex';
+  };
+}
+
+// ── ONLINE / OFFLINE ──────────────────────────────────────
+function updateOnlineUI() {
+  var el=document.getElementById('offline-pill');
+  if(el)el.classList.toggle('on',!S.online);
+}
+
+window.addEventListener('online',function(){
+  S.online=true;updateOnlineUI();
+  toast('Connexion retablie - sync...','ok');
+  setTimeout(doSync,1000);
+});
+window.addEventListener('offline',function(){
+  S.online=false;updateOnlineUI();
+  toast('Hors ligne','warn');
+});
+
+// ── PHOTO VIEWER ──────────────────────────────────────────
+document.getElementById('pv-close').onclick=function(){
+  document.getElementById('pviewer').classList.remove('on');
+};
+
+// ── TOAST ─────────────────────────────────────────────────
+var toastT;
+function toast(msg,type){
+  var el=document.getElementById('toast');
+  el.textContent=msg;el.className='toast on '+(type||'');
+  clearTimeout(toastT);
+  toastT=setTimeout(function(){el.classList.remove('on');},3500);
+}
+
+// ── INIT ──────────────────────────────────────────────────
+openIDB().then(function(db){
+  idb=db;
+  // Tentative reconnexion auto
+  idbGet('cache','auth').then(function(saved){
+    if(saved&&saved.token){
+      S.user=saved.user;S.token=saved.token;
+      startApp();
+    }
+  }).catch(function(){});
+}).catch(function(e){console.error('[IDB]',e);});
+
+})();
+</script>
+</body>
+</html>
