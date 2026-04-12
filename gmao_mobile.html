@@ -20,7 +20,7 @@
   --hh:60px; --bh:65px; --r:12px;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-body{font-family:-apple-system,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:14px}
+body{font-family:-apple-system,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:14px;-webkit-text-size-adjust:100%}
 ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:2px}
 
 /* ─── LOGIN ─────────────────────────────── */
@@ -42,27 +42,38 @@ body{font-family:-apple-system,'Segoe UI',sans-serif;background:var(--bg);color:
 #app.on{display:flex}
 
 /* ─── HEADER ────────────────────────────── */
-.hdr{height:var(--hh);background:var(--white);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;position:sticky;top:0;z-index:10}
+.hdr{height:var(--hh);background:var(--white);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;position:sticky;top:0;z-index:20}
 .hdr-back{background:none;border:none;font-size:22px;cursor:pointer;color:var(--text);padding:4px 8px 4px 0;display:none}
 .hdr-back.on{display:block}
-.hdr-title{font-size:17px;font-weight:800;flex:1}
-.hdr-right{display:flex;align-items:center;gap:8px}
-.sync-btn{background:var(--acc-l);color:var(--acc2);border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.hdr-title{font-size:17px;font-weight:800;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hdr-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.sync-btn{background:var(--acc-l);color:var(--acc2);border:none;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
 .sync-btn.syncing{animation:pulse 1s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 .offline-badge{background:var(--orange);color:#fff;border-radius:6px;padding:3px 8px;font-size:10px;font-weight:800;display:none}
 .offline-badge.on{display:block}
 .pending-badge{background:var(--red);color:#fff;border-radius:20px;padding:2px 7px;font-size:10px;font-weight:800}
+.menu-btn{background:none;border:none;font-size:22px;cursor:pointer;color:var(--text);padding:4px;display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;transition:.15s;flex-shrink:0}
+.menu-btn:active{background:var(--bg)}
+
+/* ─── DRAWER MENU ────────────────────────── */
+.drawer-ov{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:15;display:none;opacity:0;transition:opacity .25s}
+.drawer-ov.on{display:block;opacity:1}
+.drawer{position:fixed;top:var(--hh);left:0;right:0;background:#fff;z-index:16;transform:translateY(-100%);transition:transform .28s cubic-bezier(.4,0,.2,1);border-bottom:1px solid var(--border);box-shadow:0 8px 32px rgba(0,0,0,.12);max-height:calc(100vh - var(--hh));overflow-y:auto}
+.drawer.on{transform:translateY(0)}
+.drawer-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border)}
+.dni{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 8px;background:#fff;cursor:pointer;transition:.15s;border:none;font-family:inherit;font-size:11px;font-weight:700;color:var(--muted);text-align:center}
+.dni:active{background:var(--bg)}.dni.on{background:var(--acc-l);color:var(--acc2)}
+.dni .dic{font-size:26px}
+.drawer-sync{padding:12px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;background:#fff}
+.drawer-sync-lbl{flex:1;font-size:13px;font-weight:600;color:var(--muted)}
 
 /* ─── MAIN CONTENT ──────────────────────── */
-.mc{flex:1;overflow-y:auto;padding:16px;padding-bottom:calc(var(--bh) + 16px)}
+.mc{flex:1;overflow-y:auto;padding:16px;padding-bottom:20px;width:100%;max-width:100vw}
 
-/* ─── BOTTOM NAV ────────────────────────── */
-.bnav{height:var(--bh);background:#fff;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-around;flex-shrink:0;padding-bottom:env(safe-area-inset-bottom)}
-.bni{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;padding:8px 0;cursor:pointer;border:none;background:none;color:var(--muted);font-size:10px;font-weight:600;transition:.15s;position:relative}
-.bni .ic{font-size:22px}
-.bni.on{color:var(--acc)}
-.bni .bb{position:absolute;top:4px;right:calc(50% - 18px);background:var(--red);color:#fff;border-radius:10px;font-size:9px;font-weight:800;padding:1px 5px}
+/* ─── BOTTOM NAV (masqué - remplacé par drawer) ── */
+.bnav{display:none}
+.bni{display:none}
 
 /* ─── CARDS ─────────────────────────────── */
 .card{background:#fff;border-radius:var(--r);padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);border:1px solid var(--border);cursor:pointer;transition:.15s;-webkit-user-select:none;user-select:none}
@@ -191,26 +202,38 @@ body{font-family:-apple-system,'Segoe UI',sans-serif;background:var(--bg);color:
 
 <!-- APP -->
 <div id="app">
+  <!-- DRAWER OVERLAY -->
+  <div class="drawer-ov" id="drawer-ov"></div>
+
+  <!-- DRAWER MENU -->
+  <div class="drawer" id="drawer">
+    <div class="drawer-grid">
+      <button class="dni on" data-p="today"><span class="dic">📅</span>Aujourd'hui</button>
+      <button class="dni" data-p="interventions"><span class="dic">📋</span>Mes BT<span id="bb-bts" style="display:none;background:var(--red);color:#fff;border-radius:10px;font-size:9px;padding:1px 5px;margin-left:4px"></span></button>
+      <button class="dni" data-p="pending"><span class="dic">⬆️</span>À sync<span id="bb-sync" style="display:none;background:var(--red);color:#fff;border-radius:10px;font-size:9px;padding:1px 5px;margin-left:4px"></span></button>
+      <button class="dni" data-p="profil"><span class="dic">👤</span>Profil</button>
+    </div>
+    <div class="drawer-sync">
+      <span class="offline-badge" id="offline-badge" style="display:none">HORS LIGNE</span>
+      <span class="drawer-sync-lbl" id="drawer-sync-lbl">Connecté</span>
+      <button class="sync-btn" id="sync-btn">⇅ Sync<span id="pending-count"></span></button>
+    </div>
+  </div>
+
   <!-- HEADER -->
   <header class="hdr">
     <button class="hdr-back" id="hdr-back">‹</button>
-    <div class="hdr-title" id="hdr-title">Mes interventions</div>
+    <div class="hdr-title" id="hdr-title">Aujourd'hui</div>
     <div class="hdr-right">
-      <span class="offline-badge" id="offline-badge">HORS LIGNE</span>
-      <button class="sync-btn" id="sync-btn">⇅ <span id="pending-count"></span></button>
+      <button class="menu-btn" id="menu-btn">☰</button>
     </div>
   </header>
 
   <!-- CONTENT -->
   <div class="mc" id="mc"></div>
 
-  <!-- BOTTOM NAV -->
-  <nav class="bnav">
-    <button class="bni on" data-p="today"><span class="ic">📅</span>Aujourd'hui</button>
-    <button class="bni" data-p="interventions"><span class="ic">📋</span>Mes BT<span class="bb" id="bb-bts" style="display:none"></span></button>
-    <button class="bni" data-p="pending"><span class="ic">⬆️</span>À sync<span class="bb" id="bb-sync" style="display:none"></span></button>
-    <button class="bni" data-p="profil"><span class="ic">👤</span>Profil</button>
-  </nav>
+  <!-- BOTTOM NAV (masqué) -->
+  <nav class="bnav"></nav>
 </div>
 
 <!-- PHOTO VIEWER -->
@@ -468,8 +491,26 @@ var TITLES = {
   interv_detail: 'Intervention', cr_form: 'Compte rendu'
 };
 
-document.querySelectorAll('.bni[data-p]').forEach(function(btn) {
-  btn.onclick = function() { navTo(btn.dataset.p); };
+// Menu hamburger
+var menuOpen = false;
+function toggleMenu() {
+  menuOpen = !menuOpen;
+  document.getElementById('drawer').classList.toggle('on', menuOpen);
+  document.getElementById('drawer-ov').classList.toggle('on', menuOpen);
+  document.getElementById('menu-btn').textContent = menuOpen ? '✕' : '☰';
+}
+function closeMenu() {
+  menuOpen = false;
+  document.getElementById('drawer').classList.remove('on');
+  document.getElementById('drawer-ov').classList.remove('on');
+  document.getElementById('menu-btn').textContent = '☰';
+}
+
+document.getElementById('menu-btn').onclick = toggleMenu;
+document.getElementById('drawer-ov').onclick = closeMenu;
+
+document.querySelectorAll('.dni[data-p]').forEach(function(btn) {
+  btn.onclick = function() { navTo(btn.dataset.p); closeMenu(); };
 });
 
 document.getElementById('hdr-back').onclick = function() {
@@ -482,10 +523,10 @@ document.getElementById('sync-btn').onclick = doSync;
 function navTo(page) {
   var isDetail = page === 'interv_detail' || page === 'cr_form';
 
-  // Mettre à jour bottom nav
-  document.querySelectorAll('.bni[data-p]').forEach(function(b) { b.classList.remove('on'); });
+  // Mettre à jour drawer nav
+  document.querySelectorAll('.dni[data-p]').forEach(function(b) { b.classList.remove('on'); });
   var mainPage = isDetail ? (S.page === 'cr_form' ? 'interventions' : S.page) : page;
-  var btn = document.querySelector('.bni[data-p="'+mainPage+'"]');
+  var btn = document.querySelector('.dni[data-p="'+mainPage+'"]');
   if (btn) btn.classList.add('on');
 
   // Back button
@@ -1017,7 +1058,14 @@ function doLogout() {
 // ══════════════════════════════════════════════════════════
 function updateOnlineUI() {
   var badge = document.getElementById('offline-badge');
-  badge.classList.toggle('on', !S.online);
+  var lbl = document.getElementById('drawer-sync-lbl');
+  if (!S.online) {
+    badge.style.display = 'block';
+    if (lbl) lbl.textContent = 'Hors ligne';
+  } else {
+    badge.style.display = 'none';
+    if (lbl) lbl.textContent = 'Connecté';
+  }
 }
 
 window.addEventListener('online', function() {
