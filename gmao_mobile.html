@@ -229,6 +229,7 @@ body{font-family:-apple-system,'Segoe UI',sans-serif;background:var(--bg);color:
       <span class="sb-sec">Administration</span>
       <button class="sni" data-sp="utilisateurs" id="sb-users"><span class="sic">&#128101;</span>Utilisateurs</button>
       <button class="sni" data-sp="equipes" id="sb-equipes"><span class="sic">&#128106;</span>Equipes</button>
+      <button class="sni" data-sp="gammes" id="sb-gammes"><span class="sic">&#128221;</span>Gammes</button>
       <button class="sni" data-sp="parametres"><span class="sic">&#9881;&#65039;</span>Parametres</button>
       <span class="sb-sec">Sync</span>
       <button class="sni" data-sp="pending"><span class="sic">&#11014;</span>A synchroniser<span class="sbb" id="sbb-pend" style="display:none">0</span></button>
@@ -486,7 +487,7 @@ function startApp() {
     if (ur) ur.textContent = S.user.role || '';
     // Masquer selon rôle
     if (S.user.role === 'technicien') {
-      ['sb-clients','sb-projets','sb-equipes','sb-users'].forEach(function(id){
+      ['sb-clients','sb-projets','sb-equipes','sb-users','sb-gammes'].forEach(function(id){
         var el=document.getElementById(id); if(el)el.style.display='none';
       });
     } else if (S.user.role === 'manager') {
@@ -515,11 +516,13 @@ function loadAll(done) {
     });
     api('/api/equipements', {}, function(e, d) { if (!e && d) { S.equips = d; cacheSet('equips', d); } });
     api('/api/equipes', {}, function(e, d) { if (!e && d) { S.equipes = d; cacheSet('equipes', d); } });
+    api('/api/gammes', {}, function(e, d) { if (!e && d) { S.gammes = d; cacheSet('gammes', d); } });
   } else {
     cacheGet('users').then(function(d) { if (d) S.users = d; chk(); });
     ivGetAll().then(function(d) { S.ivs = d || []; updateBtBadge(); chk(); });
     cacheGet('equips').then(function(d) { if (d) S.equips = d; });
     cacheGet('equipes').then(function(d) { if (d) S.equipes = d; });
+    cacheGet('gammes').then(function(d) { if (d) S.gammes = d; });
   }
 }
 
@@ -543,7 +546,7 @@ var TITLES = {
   'detail': 'Intervention', 'cr': 'Compte rendu', 'new-bt': 'Nouveau BT',
   'clients': 'Clients', 'projets': 'Projets', 'equipements': 'Equipements',
   'pieces': 'Pieces critiques', 'interventions': 'Interventions',
-  'utilisateurs': 'Utilisateurs', 'equipes': 'Equipes', 'parametres': 'Parametres'
+  'utilisateurs': 'Utilisateurs', 'equipes': 'Equipes', 'gammes': 'Gammes', 'parametres': 'Parametres'
 };
 
 // Sidebar events
@@ -597,6 +600,7 @@ function render() {
     'interventions':renderInterventionsM,
     'utilisateurs': renderUtilisateursM,
     'equipes':      renderEquipesM,
+    'gammes':       renderGammesM,
     'parametres':   renderParametresM
   };
   if (fns[S.page]) fns[S.page]();
@@ -1163,6 +1167,127 @@ async function doSync() {
   if (btn) btn.style.opacity = '1';
   await loadPending();
   loadAll(function(){ render(); toast(ok+' sync'+(err?' · '+err+' err':''), err===0?'ok':'warn'); });
+}
+
+
+// ── GAMMES MOBILE ────────────────────────────────────────
+var PERIODICITES_M = [("QUOTIDIEN", "Quotidien (Tous les jours)"), ("HEBDOMADAIRE", "Hebdomadaire (Toutes les semaines)"), ("BIMENSUEL", "Bimensuel (Deux fois par mois)"), ("MENSUEL", "Mensuel (Tous les mois)"), ("BIMESTRIEL", "Bimestriel (Tous les deux mois)"), ("TRIMESTRIEL", "Trimestriel (Tous les trois mois)"), ("QUADRIMESTRIEL", "Quadrimestriel (Tous les quatre mois)"), ("SEMESTRIEL", "Semestriel (Tous les six mois)"), ("ANNUEL", "Annuel (Tous les ans)"), ("BISANNUEL", "Bisannuel / Biennal (Tous les deux ans)"), ("TRIENNAL", "Triennal (Tous les trois ans)"), ("QUADRIENNAL", "Quadriennal (Tous les quatre ans)"), ("QUINQUENNAL", "Quinquennal (Tous les cinq ans)")];
+
+function renderGammesM() {
+  document.getElementById('mc').innerHTML = '<div class="ld"><div class="spin"></div></div>';
+  api('/api/gammes', {}, function(err, data) {
+    if (err) { document.getElementById('mc').innerHTML = '<div class="es"><span class="es-ico">&#9888;</span><p>Erreur</p></div>'; return; }
+    S.gammes = data || [];
+    var canEdit = isManager();
+    var h = '';
+    if (canEdit) h += '<button class="btn-f btn-p" id="btn-new-gamme" style="margin-bottom:14px">+ Nouvelle gamme</button>';
+    if (!S.gammes.length) {
+      h += '<div class="es"><span class="es-ico">&#128221;</span><p>Aucune gamme</p></div>';
+    } else {
+      S.gammes.forEach(function(g) {
+        h += '<div class="dc" style="margin-bottom:12px">';
+        h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+        h += '<span style="font-size:15px;font-weight:800">'+esc(g.nom)+'</span>';
+        if (canEdit) h += '<div style="display:flex;gap:6px"><button class="abtn a-cr" style="font-size:11px;padding:5px 10px" data-edit-gm="'+g.id+'">&#9998;</button><button class="abtn a-no" style="font-size:11px;padding:5px 10px" data-del-gm="'+g.id+'">&#10005;</button></div>';
+        h += '</div>';
+        h += drow('Periodicite', (g.periodicite||'').replace(/_/g,' '));
+        h += drow('Temps', g.temps||'--');
+        if (g.operations && g.operations.length) {
+          h += '<div style="margin-top:8px"><div class="crst">Operations ('+g.operations.length+')</div>';
+          g.operations.forEach(function(op, i) {
+            h += '<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:13px">'+(i+1)+'. '+esc(op.description)+'</div>';
+          });
+          h += '</div>';
+        }
+        h += '</div>';
+      });
+    }
+    document.getElementById('mc').innerHTML = h;
+    var btnNew = document.getElementById('btn-new-gamme');
+    if (btnNew) btnNew.onclick = function() { openGammeFormM(null); };
+    document.querySelectorAll('[data-edit-gm]').forEach(function(btn) {
+      btn.onclick = function() {
+        var g = S.gammes.find(function(x){ return x.id==btn.dataset.editGm; });
+        if (g) openGammeFormM(g);
+      };
+    });
+    document.querySelectorAll('[data-del-gm]').forEach(function(btn) {
+      btn.onclick = function() {
+        if (!confirm('Supprimer cette gamme ?')) return;
+        api('/api/gammes/'+btn.dataset.delGm, {method:'DELETE'}, function(err) {
+          if (err) { toast('Erreur', 'err'); return; }
+          toast('Gamme supprimee', 'ok');
+          renderGammesM();
+        });
+      };
+    });
+  });
+}
+
+function openGammeFormM(g) {
+  g = g || {};
+  var ops = g.operations || [];
+  var h = '';
+  h += '<div class="fg"><label>Nom *</label><input type="text" id="gm-nom" value="'+esc(g.nom||'')+'"></div>';
+  h += '<div class="fg"><label>Periodicite *</label><select id="gm-per" style="-webkit-appearance:none">';
+  PERIODICITES_M.forEach(function(p) {
+    h += '<option value="'+p[0]+'"'+(g.periodicite===p[0]?' selected':'')+'>'+esc(p[1])+'</option>';
+  });
+  h += '</select></div>';
+  h += '<div class="fg"><label>Temps (ex: 01h30)</label><input type="text" id="gm-temps" value="'+esc(g.temps||'00h00')+'" placeholder="00h00"></div>';
+  h += '<div class="slbl">Operations</div>';
+  h += '<div id="gm-ops-list">';
+  ops.forEach(function(op, i) {
+    h += '<div class="ivrow" style="margin-bottom:8px"><div class="ivhd"><span class="ivtit">Operation '+(i+1)+'</span><button class="ivdel gm-del-op">&#10005;</button></div><div class="fg" style="margin-bottom:0"><input class="gm-op-inp" value="'+esc(op.description||'')+'" placeholder="Description..."></div></div>';
+  });
+  h += '</div>';
+  h += '<button class="btn-f btn-n" id="gm-add-op" style="margin-bottom:14px">+ Ajouter operation</button>';
+  h += '<button class="btn-f btn-p" id="gm-save">Enregistrer</button>';
+  h += '<button class="btn-f btn-n" id="gm-cancel">Annuler</button>';
+  document.getElementById('mc').innerHTML = h;
+  document.getElementById('htitle').textContent = g.id ? 'Modifier gamme' : 'Nouvelle gamme';
+
+  function attachDelOps() {
+    document.querySelectorAll('.gm-del-op').forEach(function(btn) {
+      btn.onclick = function() { btn.closest('.ivrow').remove(); };
+    });
+  }
+  attachDelOps();
+
+  document.getElementById('gm-add-op').onclick = function() {
+    var list = document.getElementById('gm-ops-list');
+    var n = list.querySelectorAll('.ivrow').length + 1;
+    var div = document.createElement('div');
+    div.className = 'ivrow';
+    div.style.marginBottom = '8px';
+    div.innerHTML = '<div class="ivhd"><span class="ivtit">Operation '+n+'</span><button class="ivdel gm-del-op">&#10005;</button></div><div class="fg" style="margin-bottom:0"><input class="gm-op-inp" placeholder="Description..."></div>';
+    list.appendChild(div);
+    attachDelOps();
+  };
+
+  document.getElementById('gm-cancel').onclick = function() { renderGammesM(); };
+  document.getElementById('gm-save').onclick = function() {
+    var nom = document.getElementById('gm-nom').value.trim();
+    if (!nom) { toast('Nom requis', 'err'); return; }
+    var ops = [];
+    document.querySelectorAll('.gm-op-inp').forEach(function(inp) {
+      if (inp.value.trim()) ops.push({description: inp.value.trim()});
+    });
+    var body = {
+      nom: nom,
+      periodicite: document.getElementById('gm-per').value,
+      temps: document.getElementById('gm-temps').value.trim() || '00h00',
+      operations: ops
+    };
+    var url = g.id ? '/api/gammes/'+g.id : '/api/gammes';
+    var method = g.id ? 'PATCH' : 'POST';
+    api(url, {method:method, body:body}, function(err) {
+      if (err) { toast('Erreur : '+err.message, 'err'); return; }
+      toast(g.id ? 'Gamme modifiee' : 'Gamme creee', 'ok');
+      api('/api/gammes', {}, function(e, d) { if (!e && d) { S.gammes = d; cacheSet('gammes', d); } });
+      renderGammesM();
+    });
+  };
 }
 
 // ── PROFIL ───────────────────────────────────────────────
