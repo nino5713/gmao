@@ -651,6 +651,37 @@ def export_astreinte():
                         as_attachment=True,download_name=f"astreinte_export_{today()}.xlsx")
     except Exception as e: return jsonify({"error":str(e)}),500
 
+
+@app.route("/api/astreinte/import-direct", methods=["POST"])
+@require_role("admin")
+def import_astreinte_direct():
+    """Import direct des données astreinte sans fichier"""
+    try:
+        d = request.json or {}
+        specs_list = d.get("specs", [])
+        data = d.get("data", {})
+        if not specs_list or not data:
+            return jsonify({"error": "specs et data requis"}), 400
+        db = get_db()
+        # Créer spécialités
+        for i, nom in enumerate(specs_list):
+            db.execute("INSERT OR IGNORE INTO astreinte_specialites (nom,ordre) VALUES (?,?)", (nom, i))
+        db.commit()
+        specs = {r["nom"]: r["id"] for r in rows(db.execute("SELECT id,nom FROM astreinte_specialites"))}
+        count = 0
+        for date_str, day_data in data.items():
+            for nom, tech in day_data.items():
+                sid = specs.get(nom)
+                if sid and tech:
+                    db.execute("""INSERT INTO astreinte_planning (date,specialite_id,technicien)
+                        VALUES (?,?,?) ON CONFLICT(date,specialite_id) DO UPDATE SET technicien=?""",
+                        (date_str, sid, tech, tech))
+                    count += 1
+        db.commit()
+        return jsonify({"ok": True, "imported": count})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ══ AUTH ══
 @app.route("/api/login",methods=["POST"])
 def login():
