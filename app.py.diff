@@ -1,0 +1,759 @@
+--- /home/claude/gmao-backup/backend/app.py	2026-04-18 21:16:19.000000000 +0000
++++ /home/claude/app.py	2026-04-18 21:40:33.008842719 +0000
+@@ -1,22 +1,97 @@
+ """
+-SOCOM GMAO — Backend v3.1
++SOCOM GMAO — Backend v3.2
++Audit hardening: bcrypt, rate limiting, CORS restreint, logging structuré,
++token avec expiration, gestion connexions DB, taille payload limitée.
+ """
+-import hashlib, json, os, sqlite3, smtplib, io
++import hashlib, json, os, sqlite3, smtplib, io, logging, secrets, time, re
+ from datetime import datetime, date, timedelta
+ from functools import wraps
+ from pathlib import Path
++from logging.handlers import RotatingFileHandler
+ from email.mime.text import MIMEText
+ from email.mime.multipart import MIMEMultipart
+ 
+-from flask import Flask, jsonify, request, send_file, Response
+-from flask_cors import CORS
++from flask import Flask, jsonify, request, send_file, Response, g
+ 
+-app = Flask(__name__)
+-CORS(app, origins="*")
++# bcrypt en optionnel (fallback SHA-256 pour la migration progressive)
++try:
++    import bcrypt
++    HAS_BCRYPT = True
++except ImportError:
++    HAS_BCRYPT = False
++
++# Rate limiting en optionnel (warning si absent)
++try:
++    from flask_limiter import Limiter
++    from flask_limiter.util import get_remote_address
++    HAS_LIMITER = True
++except ImportError:
++    HAS_LIMITER = False
++
++from flask_cors import CORS
+ 
+ BASE_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+ DB_PATH  = os.environ.get("GMAO_DB", str(BASE_DIR / "gmao.db"))
+ 
++# ── Logging structuré avec rotation ──
++LOG_DIR = BASE_DIR / "logs"
++LOG_DIR.mkdir(exist_ok=True)
++logger = logging.getLogger("gmao")
++logger.setLevel(logging.INFO)
++_h = RotatingFileHandler(str(LOG_DIR / "gmao.log"), maxBytes=5*1024*1024, backupCount=5, encoding="utf-8")
++_h.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
++logger.addHandler(_h)
++# Aussi en console (stdout gunicorn)
++_sh = logging.StreamHandler()
++_sh.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
++logger.addHandler(_sh)
++
++app = Flask(__name__)
++# Limite de taille de requête : 10 Mo (empêche DoS via payload base64 énorme)
++app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
++app.config["JSON_SORT_KEYS"] = False
++
++# ── CORS : restreindre aux origines légitimes via env, wildcard en fallback ──
++_cors_env = os.environ.get("GMAO_CORS_ORIGINS", "")
++if _cors_env.strip():
++    _cors_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
++else:
++    # Fallback: origines locales + wildcard en dev. En prod, DÉFINIR GMAO_CORS_ORIGINS.
++    _cors_origins = ["http://localhost", "http://127.0.0.1", "http://localhost:5173",
++                     "http://localhost:8000", "http://187.127.68.131"]
++    logger.warning("GMAO_CORS_ORIGINS non defini — utilisation de la liste par defaut. "
++                   "DEFINIR cette variable en production avec le(s) domaine(s) autorise(s).")
++CORS(app, origins=_cors_origins, supports_credentials=False)
++
++# ── Rate limiting (login, reset password) ──
++if HAS_LIMITER:
++    limiter = Limiter(get_remote_address, app=app,
++                      default_limits=[], storage_uri="memory://")
++else:
++    # Stub qui no-op si la lib n'est pas là
++    class _NoopLimiter:
++        def limit(self, *a, **k):
++            def deco(fn): return fn
++            return deco
++    limiter = _NoopLimiter()
++    logger.warning("flask-limiter non installe — rate limiting desactive. "
++                   "Installer avec: pip install flask-limiter")
++
++# ── Token d'auth : durée de vie (secondes), configurable ──
++TOKEN_TTL = int(os.environ.get("GMAO_TOKEN_TTL", 60 * 60 * 24 * 7))  # 7 jours par defaut
++# Secret serveur utilisé pour signer les tokens (persistant entre redémarrages)
++# Stocké dans parametres_app à la première utilisation
++_SERVER_SECRET_CACHE = None
++
++# Hook global : gestion d'erreur JSON uniforme + payload trop gros
++@app.errorhandler(413)
++def _too_large(e):
++    return jsonify({"error": "Payload trop volumineux (max 10 Mo)"}), 413
++
++@app.errorhandler(429)
++def _too_many(e):
++    return jsonify({"error": "Trop de requetes, veuillez reessayer plus tard"}), 429
++
+ @app.route("/")
+ def index():
+     f = BASE_DIR / "index.html"
+@@ -43,51 +118,215 @@
+     try: get_db().execute("SELECT 1"); return jsonify({"status":"ok","time":now()})
+     except Exception as e: return jsonify({"status":"error","error":str(e)}),500
+ 
+-def hp(pw): return hashlib.sha256(pw.encode()).hexdigest()
++def hp(pw):
++    """Hash SHA-256 conservé pour rétro-compatibilité (vérification legacy)."""
++    return hashlib.sha256(pw.encode()).hexdigest()
++
++def hash_password(pw):
++    """Hash moderne avec bcrypt si dispo, fallback SHA-256 sinon.
++    Retourne une chaîne préfixée par 'bcrypt$' ou 'sha256$' pour discriminer."""
++    if HAS_BCRYPT:
++        salt = bcrypt.gensalt(rounds=12)
++        return "bcrypt$" + bcrypt.hashpw(pw.encode(), salt).decode()
++    return "sha256$" + hp(pw)
++
++def verify_password(pw, stored):
++    """Vérifie un mot de passe contre un hash stocké.
++    Supporte 3 formats: bcrypt$..., sha256$..., ou legacy SHA-256 nu (64 hex)."""
++    if not stored:
++        return False
++    if stored.startswith("bcrypt$"):
++        if not HAS_BCRYPT:
++            return False
++        try:
++            return bcrypt.checkpw(pw.encode(), stored[7:].encode())
++        except Exception:
++            return False
++    if stored.startswith("sha256$"):
++        return stored[7:] == hp(pw)
++    # Legacy : hash SHA-256 brut de 64 caractères hex
++    if len(stored) == 64 and all(c in "0123456789abcdef" for c in stored.lower()):
++        return stored == hp(pw)
++    return False
++
++def needs_rehash(stored):
++    """True si le hash stocké n'est pas au format bcrypt (et bcrypt dispo)."""
++    return HAS_BCRYPT and not stored.startswith("bcrypt$")
++
+ def now(): return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+ def today(): return date.today().isoformat()
+ def rows(cur): return [dict(r) for r in cur.fetchall()]
+ def one(cur): r = cur.fetchone(); return dict(r) if r else None
+ def to_int(v):
+     try: return int(v) if v not in (None,"","null") else None
+-    except: return None
++    except (ValueError, TypeError): return None
++
++# ── Whitelist des colonnes modifiables par table (remplace la confiance aveugle dans les f-string UPDATE) ──
++ALLOWED_UPDATE_COLS = {
++    "techniciens_astreinte": {"nom","gsm","couleur","actif"},
++    "astreinte_specialites": {"nom","description","ordre"},
++    "compteur_types":        {"nom","description"},
++    "compteurs":             {"type_id","nom","numero","unite","localisation"},
++    "graphiques_config":     {"titre","ordre","series","comparaison"},
++    "parametres_rapport":    {"parametre","valeur","ordre"},
++    "utilisateurs":          {"nom","email","role","actif","password","token_version"},
++    "clients":               {"societe","nom","prenom","email","telephone","notes"},
++    "projets":               {"numero_projet","nom","client_id","manager_id","description",
++                              "date_debut","date_fin","statut"},
++    "equipements":           {"designation","type_technique","localisation","marque","modele",
++                              "puissance","numero_serie","in_out","date_mise_en_service","statut",
++                              "gamme_id","technique_id","notes","planning_id","semaine_planif",
++                              "jour_semaine_planif","intervention_samedi","intervention_dimanche"},
++    "pieces":                {"type_piece","date_installation","duree_vie_estimee",
++                              "date_fin_de_vie","statut","quantite","numero_serie",
++                              "reference","commentaire"},
++    "equipes":               {"nom","manager_id"},
++    "interventions":         {"equipement_id","technicien_id","equipe_id","type","statut",
++                              "date_prevue","date_realisation","description","rapport","heure_prevue"},
++    "comptes_rendus":        {"date_intervention","observations","actions_realisees",
++                              "mesures","recommandations","conclusion"},
++    "techniques":            {"nom","description"},
++    "gammes":                {"nom","periodicite","temps"},
++    "smtp_config":           {"host","port","username","password","sender_email",
++                              "sender_name","use_tls","enabled"},
++    "plannings":             {"nom","equipe_id","heures_par_jour","heure_debut"},
++}
++
++def safe_update(db, table, id_value, fields, id_col="id"):
++    """UPDATE sécurisé avec whitelist de colonnes. Retourne le nb de colonnes modifiées."""
++    allowed = ALLOWED_UPDATE_COLS.get(table, set())
++    sets, params = [], []
++    for col, val in fields.items():
++        if col in allowed:
++            sets.append(f"{col}=?")
++            params.append(val)
++    if not sets:
++        return 0
++    params.append(id_value)
++    db.execute(f"UPDATE {table} SET {', '.join(sets)} WHERE {id_col}=?", params)
++    return len(sets)
+ 
+ def get_db():
+-    conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
+-    conn.row_factory = sqlite3.Row
+-    conn.execute("PRAGMA journal_mode=WAL")
+-    conn.execute("PRAGMA busy_timeout=30000")
+-    conn.execute("PRAGMA foreign_keys=ON")
+-    return conn
++    """Récupère/crée la connexion SQLite liée au contexte de requête.
++    Fermeture automatique via teardown_appcontext."""
++    if "db" not in g:
++        conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
++        conn.row_factory = sqlite3.Row
++        conn.execute("PRAGMA journal_mode=WAL")
++        conn.execute("PRAGMA busy_timeout=30000")
++        conn.execute("PRAGMA foreign_keys=ON")
++        g.db = conn
++    return g.db
++
++@app.teardown_appcontext
++def _close_db(exception):
++    db = g.pop("db", None)
++    if db is not None:
++        try: db.close()
++        except Exception: pass
++
++def _get_server_secret():
++    """Secret HMAC serveur (généré au premier démarrage, persisté en BDD)."""
++    global _SERVER_SECRET_CACHE
++    if _SERVER_SECRET_CACHE:
++        return _SERVER_SECRET_CACHE
++    db = get_db()
++    r = one(db.execute("SELECT valeur FROM parametres_app WHERE cle='server_secret'"))
++    if r and r["valeur"]:
++        _SERVER_SECRET_CACHE = r["valeur"]
++        return _SERVER_SECRET_CACHE
++    secret = secrets.token_hex(32)
++    db.execute("INSERT OR REPLACE INTO parametres_app (cle,valeur) VALUES ('server_secret',?)", (secret,))
++    db.commit()
++    _SERVER_SECRET_CACHE = secret
++    return secret
++
++def _sign(data):
++    """HMAC-SHA256 hex court pour signer un token."""
++    import hmac
++    return hmac.new(_get_server_secret().encode(), data.encode(), hashlib.sha256).hexdigest()
++
++def make_token(user):
++    """Token signé: uid.issued_at.token_version.signature — expirable + révocable."""
++    iat = int(time.time())
++    tv = user.get("token_version") or 0
++    payload = f"{user['id']}.{iat}.{tv}"
++    sig = _sign(payload)
++    return f"{payload}.{sig}"
++
++def verify_token(token):
++    """Retourne l'utilisateur si le token est valide, sinon None."""
++    if not token or "." not in token:
++        return None
++    parts = token.split(".")
++    if len(parts) != 4:
++        return None
++    try:
++        uid_s, iat_s, tv_s, sig = parts
++        uid = int(uid_s); iat = int(iat_s); tv = int(tv_s)
++    except (ValueError, TypeError):
++        return None
++    # Vérif signature
++    payload = f"{uid}.{iat}.{tv}"
++    import hmac
++    if not hmac.compare_digest(sig, _sign(payload)):
++        return None
++    # Vérif expiration
++    if time.time() - iat > TOKEN_TTL:
++        return None
++    # Vérif utilisateur + token_version (permet révocation par changement de MDP)
++    db = get_db()
++    u = one(db.execute("SELECT * FROM utilisateurs WHERE id=? AND actif=1", (uid,)))
++    if not u:
++        return None
++    current_tv = u.get("token_version") or 0
++    if current_tv != tv:
++        return None
++    return u
++
++def _authenticate():
++    """Lit l'Authorization header, valide token moderne OU legacy.
++    Retourne l'utilisateur ou None."""
++    auth = request.headers.get("Authorization", "")
++    if not auth.startswith("Bearer "):
++        return None
++    token = auth[7:]
++    # Format moderne : 4 segments séparés par '.'
++    if token.count(".") == 3:
++        return verify_token(token)
++    # Legacy : ancien format "uid:hash" — accepté pour compat ascendante
++    if ":" in token:
++        parts = token.split(":")
++        if len(parts) == 2:
++            uid = to_int(parts[0])
++            if uid:
++                db = get_db()
++                u = one(db.execute("SELECT * FROM utilisateurs WHERE id=? AND actif=1",(uid,)))
++                if u and hp(f"{uid}:{u['email']}:{u['password']}") == parts[1]:
++                    return u
++    return None
+ 
+ def require_auth(fn):
+     @wraps(fn)
+     def wrapper(*a, **k):
+-        auth = request.headers.get("Authorization","")
+-        if not auth.startswith("Bearer "): return jsonify({"error":"Non authentifie"}),401
+-        token = auth[7:]; parts = token.split(":")
+-        if len(parts)!=2: return jsonify({"error":"Token invalide"}),401
+-        uid = to_int(parts[0]); db = get_db()
+-        u = one(db.execute("SELECT * FROM utilisateurs WHERE id=? AND actif=1",(uid,)))
+-        if not u or hp(f"{uid}:{u['email']}:{u['password']}")!=parts[1]:
+-            return jsonify({"error":"Token invalide"}),401
+-        request.user = u; return fn(*a,**k)
++        u = _authenticate()
++        if not u:
++            return jsonify({"error":"Non authentifie"}), 401
++        request.user = u
++        return fn(*a, **k)
+     return wrapper
+ 
+ def require_role(*roles):
+     def decorator(fn):
+         @wraps(fn)
+-        def wrapper(*a,**k):
+-            auth = request.headers.get("Authorization","")
+-            if not auth.startswith("Bearer "): return jsonify({"error":"Non authentifie"}),401
+-            token = auth[7:]; parts = token.split(":")
+-            if len(parts)!=2: return jsonify({"error":"Token invalide"}),401
+-            uid = to_int(parts[0]); db = get_db()
+-            u = one(db.execute("SELECT * FROM utilisateurs WHERE id=? AND actif=1",(uid,)))
+-            if not u or hp(f"{uid}:{u['email']}:{u['password']}")!=parts[1]:
+-                return jsonify({"error":"Token invalide"}),401
+-            if u["role"] not in roles: return jsonify({"error":"Acces refuse"}),403
+-            request.user = u; return fn(*a,**k)
++        def wrapper(*a, **k):
++            u = _authenticate()
++            if not u:
++                return jsonify({"error":"Non authentifie"}), 401
++            if u["role"] not in roles:
++                return jsonify({"error":"Acces refuse"}), 403
++            request.user = u
++            return fn(*a, **k)
+         return wrapper
+     return decorator
+ 
+@@ -129,14 +368,16 @@
+         try:
+             db.execute("INSERT INTO mail_log (destinataire,sujet,statut) VALUES (?,?,?)",(to,subj,"ENVOYE"))
+             db.commit()
+-        except: pass
++        except Exception as e_log:
++            logger.warning(f"mail_log insert failed: {e_log}")
+     except Exception as e:
+-        print(f"[MAIL] {e}")
++        logger.error(f"[MAIL] echec envoi vers {to}: {e}")
+         try:
+             db2=get_db()
+             db2.execute("INSERT INTO mail_log (destinataire,sujet,statut,erreur) VALUES (?,?,?,?)",(to,subj,"ERREUR",str(e)))
+             db2.commit()
+-        except: pass
++        except Exception as e_log:
++            logger.warning(f"mail_log error insert failed: {e_log}")
+ 
+ def notify(iid,action):
+     try:
+@@ -189,11 +430,11 @@
+                     "actions_realisees":mf("actions_realisees"),"mesures":mf("mesures"),
+                     "recommandations":mf("recommandations"),"conclusion":mf("conclusion")})
+                 attachments.append((f"Rapport_{r['numero']}.pdf",pdf_bytes))
+-            except Exception as pe: print(f"[PDF] {pe}")
++            except Exception as pe: logger.warning(f"[PDF] generation rapport echouee: {pe}")
+         send_mail(r["mgr_email"],f"[GMAO] {action} - {r['numero']}",
+             f"Bonjour {r['mgr_nom']},\n\n{action}\n\nRef: {r['numero']}\nType: {r['type']}\nStatut: {r['statut']}\nEquipement: {r['designation']}\nProjet: {r['projet']}\n\nCordialement,\nSOCOM GMAO",
+             attachments=attachments or None)
+-    except Exception as e: print(f"[NOTIFY] {e}")
++    except Exception as e: logger.error(f"[NOTIFY] echec iid={iid}: {e}")
+ 
+ def init_db():
+     db=get_db()
+@@ -386,11 +627,57 @@
+     );
+     """)
+     db.commit()
++
++    # ── Migrations idempotentes (remplace les ALTER TABLE éparpillés) ──
++    def _add_col(table, col, ddl):
++        cols = {r[1] for r in db.execute(f"PRAGMA table_info({table})").fetchall()}
++        if col not in cols:
++            try:
++                db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
++                logger.info(f"[MIGRATION] ajout {table}.{col}")
++            except Exception as e:
++                logger.error(f"[MIGRATION] echec {table}.{col}: {e}")
++
++    # utilisateurs : token_version (revocation) + reset password
++    _add_col("utilisateurs", "token_version",  "INTEGER DEFAULT 0")
++    _add_col("utilisateurs", "reset_token",    "TEXT")
++    _add_col("utilisateurs", "reset_expires",  "TEXT")
++
++    # plannings (session 7-8)
++    for col, ddl in [("equipe_id","INTEGER"), ("heures_par_jour","REAL DEFAULT 8.0"),
++                     ("heure_debut","TEXT DEFAULT '08:00'")]:
++        _add_col("plannings", col, ddl)
++
++    # equipements (session 7-8)
++    for col, ddl in [("planning_id","INTEGER"),("semaine_planif","INTEGER"),
++                     ("jour_semaine_planif","INTEGER"),("intervention_samedi","INTEGER DEFAULT 0"),
++                     ("intervention_dimanche","INTEGER DEFAULT 0")]:
++        _add_col("equipements", col, ddl)
++
++    # interventions.heure_prevue
++    _add_col("interventions", "heure_prevue", "TEXT DEFAULT '08:00'")
++
++    # Nettoyage table orpheline utilisateurs_new (si présente)
++    try:
++        r = one(db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='utilisateurs_new'"))
++        if r:
++            db.execute("DROP TABLE utilisateurs_new")
++            logger.info("[MIGRATION] table orpheline 'utilisateurs_new' supprimee")
++    except Exception as e:
++        logger.warning(f"[MIGRATION] drop utilisateurs_new: {e}")
++
++    db.commit()
++
++    # Seed admin par défaut (première installation uniquement)
+     try:
+-        db.execute("INSERT OR IGNORE INTO utilisateurs (nom,email,password,role) VALUES (?,?,?,?)",
+-                   ("Administrateur","admin@gmao.fr",hp("admin"),"admin"))
+-        db.commit()
+-    except: pass
++        r = one(db.execute("SELECT COUNT(*) AS n FROM utilisateurs"))
++        if r and r["n"] == 0:
++            db.execute("INSERT INTO utilisateurs (nom,email,password,role) VALUES (?,?,?,?)",
++                       ("Administrateur","admin@gmao.fr",hash_password("admin"),"admin"))
++            db.commit()
++            logger.warning("[SEED] compte admin par defaut cree (admin@gmao.fr / admin) — A CHANGER !")
++    except Exception as e:
++        logger.error(f"[SEED] echec: {e}")
+ 
+ with app.app_context(): init_db()
+ 
+@@ -488,27 +775,21 @@
+ 
+ # ══ MOT DE PASSE OUBLIÉ ══
+ @app.route("/api/reset-password", methods=["POST"])
++@limiter.limit("5 per hour")
+ def request_reset():
+     d  = request.json or {}
+-    email = d.get("email","").strip()
++    email = (d.get("email","") or "").strip().lower()
+     if not email: return jsonify({"error":"Email requis"}),400
+     db = get_db()
+-    u = one(db.execute("SELECT * FROM utilisateurs WHERE email=? AND actif=1",(email,)))
++    u = one(db.execute("SELECT * FROM utilisateurs WHERE lower(email)=? AND actif=1",(email,)))
+     if not u:
+         # Ne pas révéler si l'email existe ou non
+         return jsonify({"ok":True})
+-    import secrets
+     token = secrets.token_urlsafe(32)
+-    # Stocker le token avec expiration (1 heure)
+     expires = (datetime.utcnow() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+-    try:
+-        db.execute("ALTER TABLE utilisateurs ADD COLUMN reset_token TEXT")
+-        db.execute("ALTER TABLE utilisateurs ADD COLUMN reset_expires TEXT")
+-        db.commit()
+-    except: pass
++    # Les colonnes reset_token et reset_expires sont créées dans init_db (migrations)
+     db.execute("UPDATE utilisateurs SET reset_token=?,reset_expires=? WHERE id=?",(token,expires,u["id"]))
+     db.commit()
+-    # Envoyer le mail
+     base_url = request.headers.get("Origin","http://"+request.host)
+     reset_link = f"{base_url}?reset_token={token}"
+     body = f"""Bonjour {u['nom']},
+@@ -523,15 +804,17 @@
+ Cordialement,
+ SOCOM GMAO"""
+     send_mail(u["email"],"[GMAO] Réinitialisation de mot de passe",body)
++    logger.info(f"[RESET] demande pour uid={u['id']}")
+     return jsonify({"ok":True})
+ 
+ @app.route("/api/reset-password/confirm", methods=["POST"])
++@limiter.limit("10 per hour")
+ def confirm_reset():
+     d = request.json or {}
+     token = d.get("token","")
+     new_pw = d.get("password","")
+     if not token or not new_pw: return jsonify({"error":"Token et mot de passe requis"}),400
+-    if len(new_pw) < 6: return jsonify({"error":"Mot de passe trop court (6 caractères minimum)"}),400
++    if len(new_pw) < 8: return jsonify({"error":"Mot de passe trop court (8 caractères minimum)"}),400
+     db = get_db()
+     u = one(db.execute("SELECT * FROM utilisateurs WHERE reset_token=?",(token,)))
+     if not u: return jsonify({"error":"Token invalide"}),400
+@@ -540,9 +823,14 @@
+         expires = datetime.strptime(u["reset_expires"],"%Y-%m-%d %H:%M:%S")
+         if datetime.utcnow() > expires:
+             return jsonify({"error":"Token expiré, veuillez refaire une demande"}),400
+-    except: return jsonify({"error":"Token invalide"}),400
+-    db.execute("UPDATE utilisateurs SET password=?,reset_token=NULL,reset_expires=NULL WHERE id=?",(hp(new_pw),u["id"]))
++    except Exception:
++        return jsonify({"error":"Token invalide"}),400
++    # Invalider toutes les sessions existantes (bump token_version)
++    new_tv = (u.get("token_version") or 0) + 1
++    db.execute("UPDATE utilisateurs SET password=?, reset_token=NULL, reset_expires=NULL, token_version=? WHERE id=?",
++               (hash_password(new_pw), new_tv, u["id"]))
+     db.commit()
++    logger.info(f"[RESET] MDP change pour uid={u['id']} (sessions revoquees)")
+     return jsonify({"ok":True})
+ 
+ 
+@@ -586,11 +874,11 @@
+ @app.route("/api/astreinte/techniciens/<int:tid>", methods=["PATCH"])
+ @require_role("admin","manager")
+ def update_astreinte_technicien(tid):
+-    d=request.json or {}; db=get_db(); sets,params=[],[]
+-    for f in ["nom","gsm","couleur","actif"]:
+-        if f in d: sets.append(f"{f}=?"); params.append(d[f])
+-    if not sets: return jsonify({"error":"Rien"}),400
+-    params.append(tid); db.execute(f"UPDATE techniciens_astreinte SET {chr(44).join(sets)} WHERE id=?",params); db.commit()
++    d = request.json or {}
++    db = get_db()
++    n = safe_update(db, "techniciens_astreinte", tid, {k:v for k,v in d.items() if k in ("nom","gsm","couleur","actif")})
++    if n == 0: return jsonify({"error":"Rien"}), 400
++    db.commit()
+     return jsonify({"ok":True})
+ 
+ @app.route("/api/astreinte/techniciens/<int:tid>", methods=["DELETE"])
+@@ -700,7 +988,7 @@
+         for idx,(col,nom) in enumerate(COLS):
+             try:
+                 db.execute("INSERT OR IGNORE INTO astreinte_specialites (nom,ordre) VALUES (?,?)",(nom,idx))
+-            except: pass
++            except Exception: pass
+         db.commit()
+         # Récupérer les IDs
+         specs={r["nom"]:r["id"] for r in rows(db.execute("SELECT id,nom FROM astreinte_specialites"))}
+@@ -1220,7 +1508,7 @@
+             if not os.path.exists(_img_path):
+                 raise FileNotFoundError
+             _pimg = PILImage.open(_img_path).convert("RGB")
+-        except:
++        except Exception:
+             _pimg = None
+ 
+         if _pimg:
+@@ -1267,7 +1555,7 @@
+                 _limg = ImageReader(io.BytesIO(_b64.b64decode(_matches[0].group(2))))
+             _lw = 200; _lh = _lw * 148/650
+             cv.drawImage(_limg, 36, PAGE_H - _lh - 28, width=_lw, height=_lh)
+-        except: pass
++        except Exception: pass
+ 
+         # Ligne sous logo
+         cv.setStrokeColor(colors.HexColor("#e2e8f0"))
+@@ -1476,7 +1764,7 @@
+                                 val=round((rc4["valeur"]-rp4["valeur"])/nj*njm,2) if nj>0 else None
+                                 lbl=dp4s[:7]
+                                 cpt_data[cpt["id"]]["pts"].append({"label":lbl,"value":val})
+-                            except: pass
++                            except Exception: pass
+ 
+             COLORS_G=["#3b82f6","#ef4444","#22c55e","#f59e0b","#8b5cf6","#14b8a6","#f97316"]
+             GRAPH_W = (PAGE_W - 2.4*cm) * 0.75  # Largeur -25%
+@@ -1603,12 +1891,36 @@
+ 
+ 
+ @app.route("/api/login",methods=["POST"])
++@limiter.limit("10 per minute")
+ def login():
+-    d=request.json or {}; db=get_db()
+-    u=one(db.execute("SELECT * FROM utilisateurs WHERE email=? AND actif=1",(d.get("email",""),)))
+-    if not u or u["password"]!=hp(d.get("password","")): return jsonify({"error":"Email ou mot de passe incorrect"}),401
+-    token=f"{u['id']}:{hp(str(u['id'])+':'+u['email']+':'+u['password'])}"
+-    return jsonify({"token":token,"user":{"id":u["id"],"nom":u["nom"],"email":u["email"],"role":u["role"]}})
++    d = request.json or {}
++    email = (d.get("email","") or "").strip().lower()
++    pw    = d.get("password","") or ""
++    db = get_db()
++    u = one(db.execute("SELECT * FROM utilisateurs WHERE lower(email)=? AND actif=1", (email,)))
++    if not u or not verify_password(pw, u["password"]):
++        # Délai constant pour freiner timing attacks
++        time.sleep(0.3)
++        logger.warning(f"[LOGIN] echec pour {email} depuis {request.remote_addr}")
++        return jsonify({"error":"Email ou mot de passe incorrect"}), 401
++
++    # Rehash automatique vers bcrypt si MDP legacy SHA-256
++    if needs_rehash(u["password"]):
++        try:
++            new_hash = hash_password(pw)
++            db.execute("UPDATE utilisateurs SET password=? WHERE id=?", (new_hash, u["id"]))
++            db.commit()
++            u["password"] = new_hash
++            logger.info(f"[REHASH] MDP migre vers bcrypt pour uid={u['id']}")
++        except Exception as e:
++            logger.warning(f"[REHASH] echec uid={u['id']}: {e}")
++
++    token = make_token(u)
++    logger.info(f"[LOGIN] succes uid={u['id']} role={u['role']} depuis {request.remote_addr}")
++    return jsonify({
++        "token": token,
++        "user": {"id": u["id"], "nom": u["nom"], "email": u["email"], "role": u["role"]}
++    })
+ 
+ # ══ UTILISATEURS ══
+ @app.route("/api/utilisateurs")
+@@ -1621,22 +1933,33 @@
+ def create_utilisateur():
+     d=request.json or {}
+     if not all([d.get("nom"),d.get("email"),d.get("password")]): return jsonify({"error":"nom,email,password requis"}),400
++    if len(d["password"]) < 8: return jsonify({"error":"Mot de passe trop court (8 caracteres minimum)"}),400
+     db=get_db()
+     try:
+         db.execute("INSERT INTO utilisateurs (nom,email,password,role) VALUES (?,?,?,?)",
+-                   (d["nom"],d["email"],hp(d["password"]),d.get("role","technicien")))
++                   (d["nom"],d["email"].strip().lower(),hash_password(d["password"]),d.get("role","technicien")))
+         db.commit(); return jsonify({"id":db.execute("SELECT last_insert_rowid()").fetchone()[0]}),201
+     except Exception as e: return jsonify({"error":str(e)}),400
+ 
+ @app.route("/api/utilisateurs/<int:uid>",methods=["PATCH"])
+ @require_role("admin","manager")
+ def update_utilisateur(uid):
+-    d=request.json or {}; db=get_db(); sets,params=[],[]
++    d = request.json or {}
++    db = get_db()
++    fields = {}
+     for f in ["nom","email","role","actif"]:
+-        if f in d: sets.append(f"{f}=?"); params.append(d[f])
+-    if "password" in d and d["password"]: sets.append("password=?"); params.append(hp(d["password"]))
+-    if not sets: return jsonify({"error":"Rien"}),400
+-    params.append(uid); db.execute(f"UPDATE utilisateurs SET {chr(44).join(sets)} WHERE id=?",params); db.commit()
++        if f in d: fields[f] = d[f]
++    if fields.get("email"): fields["email"] = fields["email"].strip().lower()
++    if d.get("password"):
++        if len(d["password"]) < 8:
++            return jsonify({"error":"Mot de passe trop court (8 caracteres minimum)"}),400
++        fields["password"] = hash_password(d["password"])
++        # Révoquer toutes les sessions existantes
++        current = one(db.execute("SELECT token_version FROM utilisateurs WHERE id=?", (uid,)))
++        fields["token_version"] = (current["token_version"] or 0) + 1 if current else 1
++    n = safe_update(db, "utilisateurs", uid, fields)
++    if n == 0: return jsonify({"error":"Rien"}), 400
++    db.commit()
+     return jsonify({"ok":True})
+ 
+ @app.route("/api/utilisateurs/<int:uid>",methods=["DELETE"])
+@@ -1649,12 +1972,22 @@
+ @app.route("/api/utilisateurs/me",methods=["PATCH"])
+ @require_auth
+ def update_me():
+-    d=request.json or {}; db=get_db(); uid=request.user["id"]; sets,params=[],[]
+-    if "nom" in d: sets.append("nom=?"); params.append(d["nom"])
+-    if "password" in d and d["password"]: sets.append("password=?"); params.append(hp(d["password"]))
+-    if not sets: return jsonify({"error":"Rien"}),400
+-    params.append(uid); db.execute(f"UPDATE utilisateurs SET {chr(44).join(sets)} WHERE id=?",params); db.commit()
+-    return jsonify({"ok":True})
++    d = request.json or {}
++    db = get_db()
++    uid = request.user["id"]
++    fields = {}
++    if "nom" in d: fields["nom"] = d["nom"]
++    if d.get("password"):
++        if len(d["password"]) < 8:
++            return jsonify({"error":"Mot de passe trop court (8 caracteres minimum)"}),400
++        fields["password"] = hash_password(d["password"])
++        current = one(db.execute("SELECT token_version FROM utilisateurs WHERE id=?", (uid,)))
++        fields["token_version"] = (current["token_version"] or 0) + 1 if current else 1
++    n = safe_update(db, "utilisateurs", uid, fields)
++    if n == 0: return jsonify({"error":"Rien"}), 400
++    db.commit()
++    # Si MDP changé, le client devra se reconnecter (token invalide immédiatement)
++    return jsonify({"ok":True, "password_changed": "password" in fields})
+ 
+ # ══ CLIENTS ══
+ @app.route("/api/clients")
+@@ -1801,7 +2134,7 @@
+     new_eid=db.execute("SELECT last_insert_rowid()").fetchone()[0]
+     for gid in d.get("gammes",[]):
+         try: db.execute("INSERT OR IGNORE INTO equipement_gammes VALUES (?,?)",(new_eid,int(gid)))
+-        except: pass
++        except Exception: pass
+     db.commit()
+     # Générer le premier bon si planning configuré
+     if d.get("planning_id") and d.get("semaine_planif") is not None and d.get("jour_semaine_planif") is not None:
+@@ -1823,7 +2156,7 @@
+         db.execute("DELETE FROM equipement_gammes WHERE equipement_id=?",(eid,))
+         for gid in d["gammes"]:
+             try: db.execute("INSERT OR IGNORE INTO equipement_gammes VALUES (?,?)",(eid,int(gid)))
+-            except: pass
++            except Exception: pass
+     db.commit(); return jsonify({"ok":True})
+ 
+ @app.route("/api/equipements/<int:eid>",methods=["DELETE"])
+@@ -1864,7 +2197,7 @@
+         try:
+             di=datetime.strptime(d["date_installation"],"%Y-%m-%d")
+             dv=(di+timedelta(days=int(d["duree_vie_estimee"])*365)).strftime("%Y-%m-%d")
+-        except: pass
++        except Exception: pass
+     st=statut_piece(dv)
+     db.execute("INSERT INTO pieces (equipement_id,type_piece,date_installation,duree_vie_estimee,date_fin_de_vie,statut,quantite,numero_serie,reference,commentaire) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (d["equipement_id"],d["type_piece"],d.get("date_installation") or None,d.get("duree_vie_estimee") or None,dv,st,d.get("quantite",1),d.get("numero_serie",""),d.get("reference",""),d.get("commentaire","")))
+@@ -1891,7 +2224,7 @@
+                     di = datetime.strptime(piece["date_installation"],"%Y-%m-%d")
+                     fdv = (di + timedelta(days=int(piece["duree_vie_estimee"])*365)).strftime("%Y-%m-%d")
+                     db.execute("UPDATE pieces SET date_fin_de_vie=? WHERE id=?",(fdv,pid))
+-                except: pass
++                except Exception: pass
+             # Recalculer statut depuis fdv
+             new_statut = statut_piece(fdv)
+             # Ne recalculer que si statut pas explicitement fourni
+@@ -1926,7 +2259,7 @@
+     db.commit(); eid=db.execute("SELECT last_insert_rowid()").fetchone()[0]
+     for mid in d.get("membres",[]):
+         try: db.execute("INSERT OR IGNORE INTO equipe_membres VALUES (?,?)",(eid,int(mid)))
+-        except: pass
++        except Exception: pass
+     db.commit(); return jsonify({"id":eid}),201
+ 
+ @app.route("/api/equipes/<int:eid>",methods=["PATCH"])
+@@ -1942,7 +2275,7 @@
+         db.execute("DELETE FROM equipe_membres WHERE equipe_id=?",(eid,))
+         for mid in d["membres"]:
+             try: db.execute("INSERT OR IGNORE INTO equipe_membres VALUES (?,?)",(eid,int(mid)))
+-            except: pass
++            except Exception: pass
+     db.commit(); return jsonify({"ok":True})
+ 
+ @app.route("/api/equipes/<int:eid>",methods=["DELETE"])
+@@ -2063,7 +2396,7 @@
+             db.execute("INSERT INTO cr_intervenants (cr_id,utilisateur_id,nom,date,heure_debut,heure_fin,total_heures) VALUES (?,?,?,?,?,?,?)",
+                        (cr_id,to_int(iv.get("utilisateur_id")),iv.get("nom",""),iv.get("date",""),iv.get("heure_debut",""),iv.get("heure_fin",""),iv.get("total_heures",0)))
+         db.commit()
+-    except: pass
++    except Exception: pass
+     return jsonify({"id":cr_id}),201
+ 
+ @app.route("/api/comptes_rendus/cr/<int:cr_id>",methods=["PATCH"])
+@@ -2303,7 +2636,7 @@
+                 try:
+                     db.execute("INSERT OR IGNORE INTO equipements (designation,type_technique,localisation,marque,modele,statut,projet_id) VALUES (?,?,?,?,?,?,1)",
+                                (row[1],row[2] or "UPS",row[4] or "",row[5] or "",row[6] or "",row[7] or "EN_SERVICE")); count+=1
+-                except: pass
++                except Exception: pass
+         db.commit(); return jsonify({"ok":True,"imported":count})
+     except ImportError: return jsonify({"error":"openpyxl non installe"}),500
+     except Exception as e: return jsonify({"error":str(e)}),500
+@@ -2384,7 +2717,7 @@
+     ]:
+         if col not in pcols:
+             try: db.execute(f"ALTER TABLE plannings ADD COLUMN {col} {typ} DEFAULT {default}")
+-            except: pass
++            except Exception: pass
+     # Migration equipements
+     cols = [r[1] for r in db.execute("PRAGMA table_info(equipements)").fetchall()]
+     for col, typ, default in [
