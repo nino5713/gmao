@@ -2190,14 +2190,11 @@ def get_utilisateurs():
 @app.route("/api/type_techniques")
 @require_auth
 def get_type_techniques():
-    """Liste distincte des techniques existantes (valeurs de equipements.type_technique)."""
+    """Liste des techniques disponibles, issue de la table techniques (source de vérité).
+    Retourne juste les noms (strings)."""
     db = get_db()
-    result = rows(db.execute("""
-        SELECT DISTINCT type_technique FROM equipements
-        WHERE type_technique IS NOT NULL AND type_technique != ''
-        ORDER BY type_technique
-    """))
-    return jsonify([r["type_technique"] for r in result])
+    result = rows(db.execute("SELECT nom FROM techniques ORDER BY nom"))
+    return jsonify([r["nom"] for r in result])
 
 @app.route("/api/utilisateurs",methods=["POST"])
 @require_role("admin","manager")
