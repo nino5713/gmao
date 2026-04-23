@@ -1962,13 +1962,15 @@ def generate_rapport_complet(projet_id):
         LIGHT = colors.HexColor("#e8ecf8")  # SOCOM Blue light
         BORDER = colors.HexColor("#c5cef0")  # SOCOM Blue border
         buf = io.BytesIO()
+        buf_garde = io.BytesIO()
+        buf_data = io.BytesIO()
         proj_nom = proj.get("nom","") or ""
         proj_loc = (str(proj.get("ville",""))+" "+str(proj.get("code_postal",""))).strip() if proj.get("ville") else ""
 
         # ═══════════════════════════════════════
-        # PAGE DE GARDE
+        # PAGE DE GARDE (canvas dans buf_garde)
         # ═══════════════════════════════════════
-        cv = rl_canvas.Canvas(buf, pagesize=landscape(A4))
+        cv = rl_canvas.Canvas(buf_garde, pagesize=landscape(A4))
         SOCOM_BLUE = "#213e9a"
         SOCOM_DARK = "#0d1728"
 
@@ -2083,6 +2085,8 @@ def generate_rapport_complet(projet_id):
         cv.drawString(PAGE_W-155, 7, "Genere le "+datetime.now().strftime("%d/%m/%Y"))
 
         cv.showPage()
+        # Finaliser la page de garde
+        cv.save()
 
         # ═══════════════════════════════════════
         # PAGES DE DONNÉES
@@ -2355,9 +2359,28 @@ def generate_rapport_complet(projet_id):
             c6.restoreState()
 
         if story_p:
-            doc=SimpleDocTemplate(buf,pagesize=landscape(A4),leftMargin=1.2*cm,rightMargin=1.2*cm,topMargin=1.8*cm,bottomMargin=1.2*cm)
+            doc=SimpleDocTemplate(buf_data,pagesize=landscape(A4),leftMargin=1.2*cm,rightMargin=1.2*cm,topMargin=1.8*cm,bottomMargin=1.2*cm)
             doc.build(story_p,onFirstPage=on_pg,onLaterPages=on_pg)
 
+        # ═══════════════════════════════════════
+        # FUSION : page de garde + pages de données
+        # ═══════════════════════════════════════
+        from pypdf import PdfWriter, PdfReader
+        writer = PdfWriter()
+        # Page de garde
+        buf_garde.seek(0)
+        try:
+            for page in PdfReader(buf_garde).pages:
+                writer.add_page(page)
+        except Exception: pass
+        # Pages de données (si existantes)
+        if story_p:
+            buf_data.seek(0)
+            try:
+                for page in PdfReader(buf_data).pages:
+                    writer.add_page(page)
+            except Exception: pass
+        writer.write(buf)
         buf.seek(0)
         fname="rapport_energie_"+proj_nom.replace(" ","_")+"_"+str(annee)+".pdf"
         return send_file(buf,mimetype="application/pdf",as_attachment=True,download_name=fname)
