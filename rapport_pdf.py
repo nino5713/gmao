@@ -325,8 +325,42 @@ def generate_rapport(data):
 
     # ═════════ DESCRIPTIF (saisi à la création du bon) ═════════
     descriptif = (data.get('description') or '').strip()
-    if descriptif:
-        # Support simple des sauts de ligne
+    is_maint = data.get('is_maintenance')
+    gamme_ops_list = data.get('gamme_operations') or []
+    has_gamme_ops = is_maint and any(g.get('operations') for g in gamme_ops_list)
+
+    if has_gamme_ops:
+        # MAINTENANCE : remplacer le descriptif par la liste des opérations en checklist
+        def _xml_esc_d(s):
+            return (str(s) if s is not None else "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+        check_rows = []
+        for g in gamme_ops_list:
+            ops = g.get('operations') or []
+            if not ops:
+                continue
+            # Optionnel : titre de gamme si plusieurs gammes
+            if len(gamme_ops_list) > 1 and g.get('gamme_nom'):
+                check_rows.append([
+                    Paragraph(f'<font color="#1E3A8A"><b>{_xml_esc_d(g["gamme_nom"])}</b></font>', h_normal),
+                ])
+            for op in ops:
+                check_rows.append([
+                    Paragraph(f'<font name="Helvetica" size="11">☐</font>&nbsp;&nbsp;{_xml_esc_d(op)}', h_normal)
+                ])
+        if check_rows:
+            check_table = Table(check_rows, colWidths=[17*cm])
+            check_table.setStyle(TableStyle([
+                ('BOX', (0, 0), (-1, -1), 0.5, BORDER),
+                ('LEFTPADDING', (0, 0), (-1, -1), 10),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ('LINEBELOW', (0, 0), (-1, -2), 0.3, LIGHT),
+            ]))
+            story.append(KeepTogether([_section_title("OPÉRATIONS DE LA GAMME DE MAINTENANCE", styles), check_table]))
+            story.append(Spacer(1, 6))
+    elif descriptif:
+        # Comportement classique : afficher la description texte
         descriptif_html = descriptif.replace('\n', '<br/>')
         desc_para = Paragraph(descriptif_html, h_normal)
         desc_cell = Table([[desc_para]], colWidths=[17*cm])
