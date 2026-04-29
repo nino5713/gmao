@@ -695,6 +695,10 @@ function logout() {
   TOKEN = ''; USER = null;
   PLAN_TECH_ID = null;
   PLAN_TECHS_CACHE = null;
+  PLAN_OFFSET = 0;
+  PLAN_DAY_OFFSET = 0;
+  PLAN_VIEW = 'week';
+  PLAN_TEAM_MODE = false;
   localStorage.removeItem('gmao_tok');
   localStorage.removeItem('gmao_user');
   document.getElementById('app').classList.remove('on');
@@ -1727,6 +1731,9 @@ function saveNewDep() {
 
 /* ───── PLANNING ───── */
 var PLAN_OFFSET = 0;
+var PLAN_DAY_OFFSET = 0;     // offset en jours par rapport à aujourd'hui (vue jour)
+var PLAN_VIEW = 'week';      // 'week' ou 'day'
+var PLAN_TEAM_MODE = false;  // true = afficher TOUTE mon équipe (manager) au lieu d'un seul tech
 var PLAN_TECH_ID = null;      // id du tech dont on affiche le planning (null = moi)
 var PLAN_TECHS_CACHE = null;  // liste des techs visibles pour admin/manager (chargée 1x)
 function renderPlanning() {
@@ -1748,30 +1755,73 @@ function renderPlanning() {
     });
   }
   ensureTechs(function(techs){
-    var base = new Date();
-    base.setDate(base.getDate() + PLAN_OFFSET * 7);
-    var dow = base.getDay() || 7;
-    var mon = new Date(base); mon.setDate(base.getDate() - (dow - 1));
+    // Calcul des jours affichés selon viewMode
     var days = [];
-    for (var i = 0; i < 7; i++) {
-      var d = new Date(mon); d.setDate(mon.getDate() + i);
+    var debut, fin;
+    if (PLAN_VIEW === 'day') {
+      var single = new Date();
+      single.setDate(single.getDate() + PLAN_DAY_OFFSET);
+      var iso = single.toISOString().slice(0,10);
       days.push({
-        iso: d.toISOString().slice(0,10),
-        lbl: d.toLocaleDateString('fr-FR', { weekday: 'short' }).slice(0,3),
-        num: d.getDate(),
-        isToday: d.toISOString().slice(0,10) === todayISO(),
-        isWknd: i >= 5
+        iso: iso,
+        lbl: single.toLocaleDateString('fr-FR', { weekday: 'long' }),
+        num: single.getDate(),
+        mois: single.toLocaleDateString('fr-FR', { month: 'long' }),
+        isToday: iso === todayISO(),
+        isWknd: single.getDay() === 0 || single.getDay() === 6
+      });
+      debut = iso; fin = iso;
+    } else {
+      var base = new Date();
+      base.setDate(base.getDate() + PLAN_OFFSET * 7);
+      var dow = base.getDay() || 7;
+      var mon = new Date(base); mon.setDate(base.getDate() - (dow - 1));
+      for (var i = 0; i < 7; i++) {
+        var d = new Date(mon); d.setDate(mon.getDate() + i);
+        days.push({
+          iso: d.toISOString().slice(0,10),
+          lbl: d.toLocaleDateString('fr-FR', { weekday: 'short' }).slice(0,3),
+          num: d.getDate(),
+          isToday: d.toISOString().slice(0,10) === todayISO(),
+          isWknd: i >= 5
+        });
+      }
+      debut = days[0].iso; fin = days[6].iso;
+    }
+    // Décider quoi charger : un seul tech, OU toute l'équipe (mode équipe manager)
+    function _loadOne(tid, cb){
+      var url = '/api/planning/me?debut=' + debut + '&fin=' + fin;
+      if (tid && tid != USER.id) url += '&technicien_id=' + tid;
+      api(url, {}, function(e, items){
+        if (e) { cb([]); return; }
+        // Annoter chaque item avec le tech à qui il appartient (utile en mode équipe)
+        (items||[]).forEach(function(it){ if(!it._for_tech_id) it._for_tech_id = tid || USER.id; });
+        cb(items || []);
       });
     }
-    var debut = days[0].iso, fin = days[6].iso;
-    // Construire l'URL avec optionnellement ?technicien_id=X
-    var url = '/api/planning/me?debut=' + debut + '&fin=' + fin;
-    if (isAdminOrManager && PLAN_TECH_ID && PLAN_TECH_ID != USER.id) {
-      url += '&technicien_id=' + PLAN_TECH_ID;
+    function _doLoad(cb){
+      // Mode équipe (manager) : charger pour tous les techs de l'équipe
+      if (PLAN_TEAM_MODE && USER.role === 'manager') {
+        var teamIds = techs.map(function(t){return t.id;});
+        if (!teamIds.length) { cb([]); return; }
+        var collected = [], remaining = teamIds.length;
+        teamIds.forEach(function(tid){
+          _loadOne(tid, function(items){
+            // Stocker le nom du tech sur chaque item (techs[] est déjà chargé)
+            var techObj = techs.find(function(t){return t.id===tid;});
+            var techName = techObj ? techObj.nom : '';
+            items.forEach(function(it){ it._tech_name = techName; });
+            collected = collected.concat(items);
+            remaining--;
+            if (remaining === 0) cb(collected);
+          });
+        });
+      } else {
+        _loadOne(PLAN_TECH_ID, cb);
+      }
     }
-    api(url, {}, function(e, items) {
-    if (e) { mc.innerHTML = '<div class="empty">' + esc(e) + '</div>'; return; }
-    var list = items || [];
+    _doLoad(function(items){
+      var list = items;
     list.sort(function(a,b){
       if (a.date !== b.date) return a.date < b.date ? -1 : 1;
       return (a.heure_debut || '') < (b.heure_debut || '') ? -1 : 1;
@@ -1801,6 +1851,11 @@ function renderPlanning() {
     });
     var hoursDisplay = (Math.round(weekHours * 100) / 100).toFixed(2).replace(/\.?0+$/,'') || '0';
     var h = '';
+    // Toggle Jour / Semaine
+    h += '<div style="display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:10px">';
+    h += '<button id="pl-vw-day" style="flex:1;padding:8px;border:0;cursor:pointer;font-weight:700;font-size:13px;background:'+(PLAN_VIEW==='day'?'var(--acc,#3b82f6)':'var(--surface,#fff)')+';color:'+(PLAN_VIEW==='day'?'#fff':'var(--text)')+'">📅 Jour</button>';
+    h += '<button id="pl-vw-week" style="flex:1;padding:8px;border:0;cursor:pointer;font-weight:700;font-size:13px;background:'+(PLAN_VIEW==='week'?'var(--acc,#3b82f6)':'var(--surface,#fff)')+';color:'+(PLAN_VIEW==='week'?'#fff':'var(--text)')+';border-left:1px solid var(--border)">📆 Semaine</button>';
+    h += '</div>';
     // Sélecteur de technicien (admin/manager seulement)
     if (isAdminOrManager && techs.length > 0) {
       var currentTid = PLAN_TECH_ID || USER.id;
@@ -1808,47 +1863,72 @@ function renderPlanning() {
       h += '<label style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:4px">Planning de</label>';
       h += '<select id="pl-tech-sel" style="width:100%;height:40px;padding:0 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);font-size:14px;font-weight:600">';
       // Option "Moi"
-      h += '<option value="">👤 Moi (' + esc(USER.nom || '') + ')</option>';
+      h += '<option value=""'+(!PLAN_TEAM_MODE && !PLAN_TECH_ID?' selected':'')+'>👤 Moi (' + esc(USER.nom || '') + ')</option>';
+      // Option "Toute mon équipe" (manager uniquement)
+      if (USER.role === 'manager') {
+        h += '<option value="__team__"'+(PLAN_TEAM_MODE?' selected':'')+'>👥 Toute mon équipe</option>';
+      }
       techs.forEach(function(t){
         if (t.id == USER.id) return; // déjà dans "Moi"
-        h += '<option value="' + t.id + '"' + (currentTid == t.id ? ' selected' : '') + '>' + esc(t.nom) + '</option>';
+        h += '<option value="' + t.id + '"' + (!PLAN_TEAM_MODE && currentTid == t.id ? ' selected' : '') + '>' + esc(t.nom) + '</option>';
       });
       h += '</select></div>';
     }
-    h += '<div class="wk-days">';
-    days.forEach(function(d){
-      h += '<div class="wk-day ' + (d.isToday ? 'on' : '') + ' ' + (d.isWknd ? 'wknd' : '') + '">';
-      h += '<div class="d">' + esc(d.lbl) + '</div><div class="n">' + d.num + '</div></div>';
-    });
-    h += '</div>';
-    // Badge compteur d'heures de la semaine
+    // Bandeau jours (uniquement en vue semaine)
+    if (PLAN_VIEW === 'week') {
+      h += '<div class="wk-days">';
+      days.forEach(function(d){
+        h += '<div class="wk-day ' + (d.isToday ? 'on' : '') + ' ' + (d.isWknd ? 'wknd' : '') + '">';
+        h += '<div class="d">' + esc(d.lbl) + '</div><div class="n">' + d.num + '</div></div>';
+      });
+      h += '</div>';
+    } else {
+      // Vue jour : afficher le jour en grand
+      var dInfo = days[0];
+      h += '<div style="text-align:center;padding:10px;background:var(--surface-2,#f8fafc);border-radius:8px;margin-bottom:10px">';
+      h += '<div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;font-weight:600">'+(dInfo.isToday?'Aujourd\'hui':'')+'</div>';
+      h += '<div style="font-size:18px;font-weight:800;color:var(--text);text-transform:capitalize">'+esc(dInfo.lbl)+' '+dInfo.num+'</div>';
+      if (dInfo.mois) h += '<div style="font-size:13px;color:var(--text-muted);text-transform:capitalize">'+esc(dInfo.mois)+'</div>';
+      h += '</div>';
+    }
+    // Badge compteur d'heures de la période (semaine ou jour)
     h += '<div style="display:flex;justify-content:center;margin-bottom:10px">';
-    h += '<span style="background:#10b981;color:#fff;padding:6px 14px;border-radius:8px;font-weight:700;font-size:13px;display:inline-flex;align-items:center;gap:6px">⏱️ ' + hoursDisplay + ' h cette semaine</span>';
+    var hLabel = PLAN_VIEW === 'day' ? 'ce jour' : 'cette semaine';
+    h += '<span style="background:#10b981;color:#fff;padding:6px 14px;border-radius:8px;font-weight:700;font-size:13px;display:inline-flex;align-items:center;gap:6px">⏱️ ' + hoursDisplay + ' h ' + hLabel + '</span>';
     h += '</div>';
     h += '<div style="display:flex;gap:6px;margin-bottom:10px">';
     h += '<button class="btn ghost" id="pl-prev" style="flex:1;height:36px;flex-shrink:0">‹ Précédent</button>';
-    h += '<button class="btn ghost" id="pl-tod" style="flex:1;height:36px;flex-shrink:0">Cette semaine</button>';
+    h += '<button class="btn ghost" id="pl-tod" style="flex:1;height:36px;flex-shrink:0">'+(PLAN_VIEW==='day'?'Aujourd\'hui':'Cette semaine')+'</button>';
     h += '<button class="btn ghost" id="pl-next" style="flex:1;height:36px;flex-shrink:0">Suivant ›</button>';
     h += '</div>';
     h += '<button class="btn primary" id="pl-add-occ" style="width:100%;height:40px;margin-bottom:16px">+ Nouvelle occupation (congés, formation...)</button>';
     if (!list.length) {
-      h += '<div class="empty"><div class="ic">◎</div>Aucune intervention prévue cette semaine</div>';
+      h += '<div class="empty"><div class="ic">◎</div>Aucune intervention prévue '+(PLAN_VIEW==='day'?'ce jour':'cette semaine')+'</div>';
     } else {
       var byDay = {};
       list.forEach(function(it){ (byDay[it.date] = byDay[it.date] || []).push(it); });
       days.forEach(function(d){
         var dayItems = byDay[d.iso];
         if (!dayItems) return;
-        h += '<div class="day-sep">' + esc(d.lbl) + ' ' + d.num + (d.isToday ? ' · Aujourd\'hui' : '') + '</div>';
+        // En vue jour, pas besoin du séparateur (on a déjà le titre en haut)
+        if (PLAN_VIEW !== 'day') {
+          h += '<div class="day-sep">' + esc(d.lbl) + ' ' + d.num + (d.isToday ? ' · Aujourd\'hui' : '') + '</div>';
+        }
         dayItems.forEach(function(it){
           var horaire = it.heure_debut || '—';
           if (it.heure_fin) horaire += ' → ' + it.heure_fin;
+          // En mode équipe, on affiche le nom du tech sur chaque tuile
+          var techBadge = '';
+          if (PLAN_TEAM_MODE && it._tech_name) {
+            techBadge = '<div style="display:inline-block;background:var(--text);color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px">👤 '+esc(it._tech_name)+'</div>';
+          }
           if (it.source === 'occupation') {
             // Occupation : affichage avec couleur du type
             var color = it.type_couleur || '#64748b';
             h += '<div class="slot">';
             h += '<div class="slot-time"><div class="t">' + esc(horaire) + '</div></div>';
             h += '<div class="slot-body" data-occ="' + it.occupation_id + '" style="cursor:pointer;border-left:3px solid ' + color + ';background:' + color + '15">';
+            h += techBadge;
             h += '<div class="t1" style="color:' + color + '">' + esc(it.type_occupation || 'Occupation') + '</div>';
             h += '<div class="t2">';
             h += '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:50%;background:' + color + '"></span>Occupation</span>';
@@ -1863,9 +1943,8 @@ function renderPlanning() {
             h += '</div></div>';
           } else if (it.source === 'cr') {
             // Compte-rendu (MAINTENANCE ou DEPANNAGE) : affiche à la place du bon
-            console.log('[planning mobile CR]', it.cr_numero, 'parent=', it.numero, 'date=', it.date);
             var isDep = (it.type === 'DEPANNAGE');
-            var crColor = isDep ? '#EA580C' : '#059669';    // orange pour dep, vert pour maintenance
+            var crColor = isDep ? '#EA580C' : '#059669';
             var crBg = isDep ? '#FFEDD5' : '#D1FAE5';
             var crIcon = isDep ? '🛠' : '✅';
             var crLabel = isDep ? 'Dépannage' : 'Maintenance';
@@ -1873,6 +1952,7 @@ function renderPlanning() {
             h += '<div class="slot">';
             h += '<div class="slot-time"><div class="t">' + esc(horaire) + '</div></div>';
             h += '<div class="slot-body" data-iv="' + it.intervention_id + '" style="cursor:pointer;border-left:3px solid ' + crColor + ';background:' + crBg + '">';
+            h += techBadge;
             h += '<div class="t1" style="color:' + crColor + ';font-weight:700">' + crIcon + ' ' + esc(crNum || 'CR') + '</div>';
             h += '<div class="t2">' + esc(it.equip_nom || '—') + (it.projet_nom ? ' · ' + esc(it.projet_nom) : '') + '</div>';
             // Ligne descriptif : libellé + numéro bon parent + numéro CR
@@ -1887,6 +1967,7 @@ function renderPlanning() {
             h += '<div class="slot">';
             h += '<div class="slot-time"><div class="t">' + esc(horaire) + '</div></div>';
             h += '<div class="slot-body ' + info.cls + '" data-iv="' + it.intervention_id + '" style="cursor:pointer">';
+            h += techBadge;
             h += '<div class="t1">' + esc(it.equip_nom || '—') + '</div>';
             h += '<div class="t2">' + esc(it.projet_nom || '') + ' · ' + esc(info.tag);
             if (it.numero) h += ' · ' + esc(it.numero);
@@ -1899,17 +1980,41 @@ function renderPlanning() {
     }
     h += '<div style="height:40px"></div>';
     mc.innerHTML = h;
+    // Toggle vue
+    var btnDay = document.getElementById('pl-vw-day');
+    var btnWeek = document.getElementById('pl-vw-week');
+    if (btnDay) btnDay.onclick = function(){ PLAN_VIEW='day'; renderPlanning(); };
+    if (btnWeek) btnWeek.onclick = function(){ PLAN_VIEW='week'; renderPlanning(); };
     // Handler select technicien
     var techSel = document.getElementById('pl-tech-sel');
     if (techSel) {
       techSel.onchange = function(){
-        PLAN_TECH_ID = this.value ? parseInt(this.value) : null;
+        var v = this.value;
+        if (v === '__team__') {
+          PLAN_TEAM_MODE = true;
+          PLAN_TECH_ID = null;
+        } else {
+          PLAN_TEAM_MODE = false;
+          PLAN_TECH_ID = v ? parseInt(v) : null;
+        }
         renderPlanning();
       };
     }
-    document.getElementById('pl-prev').onclick = function(){ PLAN_OFFSET--; renderPlanning(); };
-    document.getElementById('pl-next').onclick = function(){ PLAN_OFFSET++; renderPlanning(); };
-    document.getElementById('pl-tod').onclick = function(){ PLAN_OFFSET = 0; renderPlanning(); };
+    document.getElementById('pl-prev').onclick = function(){
+      if (PLAN_VIEW==='day') PLAN_DAY_OFFSET--;
+      else PLAN_OFFSET--;
+      renderPlanning();
+    };
+    document.getElementById('pl-next').onclick = function(){
+      if (PLAN_VIEW==='day') PLAN_DAY_OFFSET++;
+      else PLAN_OFFSET++;
+      renderPlanning();
+    };
+    document.getElementById('pl-tod').onclick = function(){
+      if (PLAN_VIEW==='day') PLAN_DAY_OFFSET=0;
+      else PLAN_OFFSET=0;
+      renderPlanning();
+    };
     document.getElementById('pl-add-occ').onclick = function(){ openOccupationForm(); };
     document.querySelectorAll('.slot-body[data-iv]').forEach(function(el){
       el.onclick = function(){ goSub('iv', parseInt(el.dataset.iv)); };
@@ -1917,7 +2022,7 @@ function renderPlanning() {
     document.querySelectorAll('.slot-body[data-occ]').forEach(function(el){
       el.onclick = function(){ openOccupationForm(parseInt(el.dataset.occ)); };
     });
-    }); // end api callback
+    }); // end _doLoad callback
   }); // end ensureTechs
 }
 
