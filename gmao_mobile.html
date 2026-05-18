@@ -2766,6 +2766,15 @@ var PLAN_VIEW = 'week';      // 'week' ou 'day'
 var PLAN_TEAM_MODE = false;  // true = afficher TOUTE mon équipe (manager) au lieu d'un seul tech
 var PLAN_TECH_ID = null;      // id du tech dont on affiche le planning (null = moi)
 var PLAN_TECHS_CACHE = null;  // liste des techs visibles pour admin/manager (chargée 1x)
+var JF_CACHE = null;          // v218.219 : cache des jours fériés (chargé 1x)
+function _ensureJoursFeries(cb) {
+  if (JF_CACHE !== null) { cb(JF_CACHE); return; }
+  api('/api/jours-feries', {}, function(err, data) {
+    if (err || !data) { JF_CACHE = []; cb([]); return; }
+    JF_CACHE = data.jours_feries || [];
+    cb(JF_CACHE);
+  });
+}
 function renderPlanning() {
   var mc = document.getElementById('mc');
   var isAdminOrManager = USER && (USER.role === 'admin' || USER.role === 'manager');
@@ -2851,6 +2860,7 @@ function renderPlanning() {
       }
     }
     _doLoad(function(items){
+      _ensureJoursFeries(function(jfList){
       var list = items;
     list.sort(function(a,b){
       if (a.date !== b.date) return a.date < b.date ? -1 : 1;
@@ -2932,7 +2942,13 @@ function renderPlanning() {
     h += '<button class="btn ghost" id="pl-next" style="flex:1;height:36px;flex-shrink:0">Suivant ›</button>';
     h += '</div>';
     h += '<button class="btn primary" id="pl-add-occ" style="width:100%;height:40px;margin-bottom:16px">+ Nouvelle occupation (congés, formation...)</button>';
-    if (!list.length) {
+    // v218.219 : Y a-t-il des jours fériés dans la plage affichée ?
+    var dayIsoSet = {};
+    days.forEach(function(d){ dayIsoSet[d.iso] = 1; });
+    var feriesInRange = (jfList || []).filter(function(jf){
+      return dayIsoSet[(jf.date || '').slice(0, 10)];
+    });
+    if (!list.length && !feriesInRange.length) {
       h += '<div class="empty"><div class="ic">◎</div>Aucune intervention prévue '+(PLAN_VIEW==='day'?'ce jour':'cette semaine')+'</div>';
     } else {
       var byDay = {};
@@ -3001,30 +3017,57 @@ function renderPlanning() {
         byDay[dateIso] = merged;
       });
       days.forEach(function(d){
-        var dayItems = byDay[d.iso];
-        if (!dayItems) return;
+        var dayItems = byDay[d.iso] || [];
+        // v218.219 : Récupérer les jours fériés tombant ce jour
+        var dayFeries = (jfList || []).filter(function(jf){
+          return (jf.date || '').slice(0, 10) === d.iso;
+        });
+        // Si aucune intervention NI jour férié → sauter ce jour
+        if (!dayItems.length && !dayFeries.length) return;
         // En vue jour, pas besoin du séparateur (on a déjà le titre en haut)
         if (PLAN_VIEW !== 'day') {
           h += '<div class="day-sep">' + esc(d.lbl) + ' ' + d.num + (d.isToday ? ' · Aujourd\'hui' : '') + '</div>';
         }
+        // v218.219 : Afficher d'abord les jours fériés (tuile rouge hachurée, en haut du jour)
+        dayFeries.forEach(function(jf){
+          var jfHoraire = (jf.heure_debut || '') + (jf.heure_fin ? ' → ' + jf.heure_fin : '');
+          h += '<div class="slot">';
+          h += '<div class="slot-time"><div class="t">' + esc(jfHoraire || '—') + '</div></div>';
+          h += '<div class="slot-body" style="border-left:3px solid #DC2626;background:repeating-linear-gradient(45deg,#DC262615,#DC262615 8px,#DC262625 8px,#DC262625 16px);cursor:default">';
+          h += '<div class="t1" style="color:#DC2626;font-weight:700">🎉 ' + esc(jf.label || 'Jour férié') + '</div>';
+          h += '<div class="t2" style="font-style:italic">Tous les utilisateurs</div>';
+          h += '</div></div>';
+        });
         dayItems.forEach(function(it){
           var horaire = it.heure_debut || '—';
           if (it.heure_fin) horaire += ' → ' + it.heure_fin;
-          // En mode équipe, on affiche le nom du / des techs sur chaque tuile.
-          // Mise en forme unique : pastille blanche avec texte sombre, lisible
-          // quel que soit le fond. Si plusieurs techs (occupation fusionnée),
-          // on liste les noms dans la même pastille (un seul élément visuel).
+          // v218.219 : Badge techniciens TOUJOURS visible (interventions + occupations).
+          //   - Priorité 1 : technicien_noms / occupation_tech_noms (envoyés par l'API)
+          //   - Priorité 2 : _grouped_techs (occupations fusionnées en mode équipe)
+          //   - Priorité 3 : _tech_name (mode équipe)
+          // Pastille blanche avec texte sombre, lisible quel que soit le fond.
           var techBadge = '';
-          if (PLAN_TEAM_MODE) {
-            var nameToShow = '';
+          var nameToShow = '';
+          if (it.source === 'occupation') {
+            // Pour les occupations, privilégier la liste fusionnée (mode équipe),
+            // puis occupation_tech_noms du backend
             if (it._grouped_techs && it._grouped_techs.length > 0) {
               nameToShow = it._grouped_techs.join(', ');
+            } else if (Array.isArray(it.occupation_tech_noms) && it.occupation_tech_noms.length) {
+              nameToShow = it.occupation_tech_noms.join(', ');
             } else if (it._tech_name) {
               nameToShow = it._tech_name;
             }
-            if (nameToShow) {
-              techBadge = '<div style="display:inline-block;background:#fff;color:#0f172a;padding:3px 10px;border-radius:10px;font-size:10px;font-weight:700;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px;border:1px solid rgba(0,0,0,0.15);box-shadow:0 1px 2px rgba(0,0,0,0.08);max-width:100%;white-space:normal;word-break:break-word;line-height:1.3">👤 '+esc(nameToShow)+'</div>';
+          } else {
+            // Pour les interventions / CR
+            if (Array.isArray(it.technicien_noms) && it.technicien_noms.length) {
+              nameToShow = it.technicien_noms.join(', ');
+            } else if (it._tech_name) {
+              nameToShow = it._tech_name;
             }
+          }
+          if (nameToShow) {
+            techBadge = '<div style="display:inline-block;background:#fff;color:#0f172a;padding:3px 10px;border-radius:10px;font-size:10px;font-weight:700;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px;border:1px solid rgba(0,0,0,0.15);box-shadow:0 1px 2px rgba(0,0,0,0.08);max-width:100%;white-space:normal;word-break:break-word;line-height:1.3">👤 '+esc(nameToShow)+'</div>';
           }
           if (it.source === 'occupation') {
             // Occupation : affichage avec couleur du type
@@ -3140,6 +3183,7 @@ function renderPlanning() {
     document.querySelectorAll('.slot-body[data-occ]').forEach(function(el){
       el.onclick = function(){ openOccupationForm(parseInt(el.dataset.occ)); };
     });
+    }); // end _ensureJoursFeries callback
     }); // end _doLoad callback
   }); // end ensureTechs
 }
